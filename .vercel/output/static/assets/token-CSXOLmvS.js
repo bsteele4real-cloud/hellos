@@ -1,0 +1,1 @@
+function e(e){let t=e.trim();if(!t)return 0;let n=Math.round(t.length/4),r=Math.round(t.split(/\s+/).length*1.3);return Math.max(1,Math.round((n+r)/2))}function t(e){let t=Math.max(32,Math.round(e*.28));return{kept:t,saved:Math.max(0,e-t)}}function n(e){return e>=1e3?`${(e/1e3).toFixed(e>=1e4?0:1)}k`:String(e)}export{e as n,n as r,t};

@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8080/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Helix",
+      "hasCanvas": false,
+      "bodyTextLen": 2009,
+      "bodyTextHash": "15a019db716c3f8fbb052e54c61445d24a174ab3f5b27274e208b4620bc88085",
+      "bodyTextPrefix": "Helix SECOND BRAIN · SKILL LIBRARY · GOVERNANCE Record the work.",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Helix",
+      "hasCanvas": false,
+      "bodyTextLen": 2009,
+      "bodyTextHash": "15a019db716c3f8fbb052e54c61445d24a174ab3f5b27274e208b4620bc88085",
+      "bodyTextPrefix": "Helix SECOND BRAIN · SKILL LIBRARY · GOVERNANCE Record the work.",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview.json"
+}
