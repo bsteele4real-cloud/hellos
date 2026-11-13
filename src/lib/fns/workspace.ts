@@ -3,13 +3,7 @@ import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import { CONNECTOR_CATALOG } from "@/lib/helix/catalog";
 import { fallbackLinuxScript, fallbackProtocol } from "@/lib/helix/linux";
-import {
-  isoDaysAgo,
-  seedMemories,
-  seedMistakes,
-  seedPolicies,
-  seedSkills,
-} from "@/lib/helix/seed";
+import { initialHistory, seedPolicies, seedSkills } from "@/lib/helix/seed";
 import { compactBudget, estimateTokens } from "@/lib/helix/token";
 
 export type ProfileRow = {
@@ -197,53 +191,15 @@ export const runInit = createServerFn({ method: "POST" })
         values (${uid}, ${p.slug}, ${p.name}, ${p.domain}, ${p.rule}, ${p.enabled})
         on conflict (user_id, slug) do nothing`;
     }
-    for (const m of seedMemories()) {
-      await sql`insert into helix_memory (user_id, title, body, tags, token_estimate)
-        values (${uid}, ${m.title}, ${m.body}, ${m.tags}, ${m.token_estimate})`;
-    }
-    for (const m of seedMistakes) {
-      await sql`insert into helix_mistakes (user_id, pattern, count, flagged, tutor_note)
-        values (${uid}, ${m.pattern}, ${m.count}, ${m.flagged}, ${m.tutor_note})
-        on conflict (user_id, pattern) do nothing`;
-    }
     for (const c of CONNECTOR_CATALOG) {
       await sql`insert into helix_connectors (user_id, provider, status, detail)
         values (${uid}, ${c.provider}, 'idle', ${c.blurb})
         on conflict (user_id, provider) do nothing`;
     }
 
-    const eventPlan: { days: number; hour: number; kind: string; label: string; detail: string; severity: string }[] = [
-      { days: 6, hour: 8, kind: "action", label: "Pre-planned token budget", detail: "Dropped two unused skills from the prompt.", severity: "info" },
-      { days: 6, hour: 18, kind: "mistake", label: "Skipped compact", detail: "Pasted full memory into generation.", severity: "warn" },
-      { days: 5, hour: 9, kind: "action", label: "Installed workflow-optimizer", detail: "Tutor loop armed.", severity: "info" },
-      { days: 4, hour: 11, kind: "mistake", label: "Ran script with sudo", detail: "Generated job did not need root.", severity: "flag" },
-      { days: 3, hour: 8, kind: "compact", label: "Morning compact", detail: "Saved 1.2k tokens.", severity: "info" },
-      { days: 3, hour: 16, kind: "generate", label: "udev rule draft", detail: "Android host script, uninstalled.", severity: "info" },
-      { days: 2, hour: 10, kind: "mistake", label: "Skipped compact", detail: "Third occurrence this week.", severity: "flag" },
-      { days: 1, hour: 8, kind: "action", label: "Daily briefing", detail: "Flagged three patterns.", severity: "info" },
-      { days: 1, hour: 15, kind: "policy", label: "Enabled human-gate-destructive", detail: "Governor armed.", severity: "info" },
-      { days: 0, hour: 8, kind: "init", label: "Workspace initialized", detail: "User bound. Analytics live.", severity: "info" },
-    ];
-    for (const e of eventPlan) {
-      await sql`insert into helix_events (user_id, kind, label, detail, severity, created_at)
-        values (${uid}, ${e.kind}, ${e.label}, ${e.detail}, ${e.severity}, ${isoDaysAgo(e.days, e.hour)})`;
-    }
-
-    for (let d = 6; d >= 0; d--) {
-      const date = isoDaysAgo(d, 12).slice(0, 10);
-      const productivity = 58 + (6 - d) * 4 + (d === 4 ? -12 : 0);
-      const tokensSaved = 200 + d * 90;
-      const tokensSpent = 420 - d * 20;
-      const mistakesFlagged = d === 4 || d === 2 || d === 0 ? 1 : 0;
-      const actions = 6 + ((6 - d) % 4);
-      const summary =
-        d === 0
-          ? "Init complete. Three flagged loops remain. Compact before the next generation."
-          : `Day window ${date}: productivity ${productivity}, saved ${tokensSaved} tokens.`;
-      await sql`insert into helix_reports (user_id, report_date, summary, productivity, tokens_saved, tokens_spent, mistakes_flagged, actions)
-        values (${uid}, ${date}, ${summary}, ${productivity}, ${tokensSaved}, ${tokensSpent}, ${mistakesFlagged}, ${actions})
-        on conflict (user_id, report_date) do nothing`;
-    }
+    const history = initialHistory();
+    await sql`insert into helix_events (user_id, kind, label, detail, severity)
+      values (${uid}, ${history.event.kind}, ${history.event.label}, ${history.event.detail}, ${history.event.severity})`;
 
     await sql`update helix_profiles set initialized_at = now(), role = 'admin' where user_id = ${uid}`;
     return loadWorkspace(uid);

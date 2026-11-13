@@ -13,8 +13,15 @@ import type { ReportRow } from "@/lib/fns/workspace";
 export function WeekChart({ reports }: { reports: ReportRow[] }) {
   const [ready, setReady] = useState(false);
   useEffect(() => setReady(true), []);
-  if (!ready || reports.length === 0) {
-    return <div className="h-48 animate-pulse rounded-xl bg-elevated" />;
+  if (!ready) {
+    return <div className="h-48 animate-pulse rounded-xl bg-elevated" aria-hidden="true" />;
+  }
+  if (reports.length === 0) {
+    return (
+      <p className="text-sm text-muted">
+        No token history yet. It shows up after you shorten notes or generate a skill.
+      </p>
+    );
   }
   const data = reports.map((r) => ({
     day: r.report_date.slice(5),

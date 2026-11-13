@@ -46,8 +46,8 @@ function CommandPage() {
           </h1>
           <p className="mt-2 max-w-xl text-sm text-muted">
             {initialized
-              ? "Workflow is recording. Compact before you generate. Flagged loops sit with the tutor."
-              : "Run /init to bind this account, seed the skill library, and start analytics. Until then the brain is dark."}
+              ? "This is your own activity. Nothing was filled in when you set up the workspace."
+              : "Set up Helix to load the skill library. Notes, mistakes, and the week chart stay empty until you add them."}
           </p>
         </div>
         {!initialized && (
