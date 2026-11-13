@@ -5,7 +5,10 @@ import { mutationErrorMessage } from "./mutation-error.ts";
 
 describe("mutationErrorMessage", () => {
   it("reads an Error, a string, and a nested cause", () => {
-    assert.equal(mutationErrorMessage(new Error("Policy blocked the save.")), "Policy blocked the save.");
+    assert.equal(
+      mutationErrorMessage(new Error("Policy blocked the save.")),
+      "Policy blocked the save.",
+    );
     assert.equal(mutationErrorMessage("Sign in and try again."), "Sign in and try again.");
     assert.equal(
       mutationErrorMessage({ message: "Server error", cause: new Error("Database unavailable") }),

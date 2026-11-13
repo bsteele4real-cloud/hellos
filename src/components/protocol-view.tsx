@@ -24,9 +24,23 @@ export function ProtocolView({ source }: { source: string }) {
     <div className="space-y-3 text-sm leading-relaxed text-fg">
       {blocks.map((block, index) => {
         if (block.type === "heading") {
-          if (block.level === 1) return <h2 key={index} className="font-serif text-2xl">{block.text}</h2>;
-          if (block.level === 2) return <h3 key={index} className="font-serif text-xl">{block.text}</h3>;
-          return <h4 key={index} className="font-medium">{block.text}</h4>;
+          if (block.level === 1)
+            return (
+              <h2 key={index} className="font-serif text-2xl">
+                {block.text}
+              </h2>
+            );
+          if (block.level === 2)
+            return (
+              <h3 key={index} className="font-serif text-xl">
+                {block.text}
+              </h3>
+            );
+          return (
+            <h4 key={index} className="font-medium">
+              {block.text}
+            </h4>
+          );
         }
         if (block.type === "ul") {
           return (
@@ -52,7 +66,10 @@ export function ProtocolView({ source }: { source: string }) {
         }
         if (block.type === "code") {
           return (
-            <pre key={index} className="overflow-x-auto rounded-lg bg-elevated p-3 font-mono text-xs leading-relaxed text-muted">
+            <pre
+              key={index}
+              className="overflow-x-auto rounded-lg bg-elevated p-3 font-mono text-xs leading-relaxed text-muted"
+            >
               {block.text}
             </pre>
           );

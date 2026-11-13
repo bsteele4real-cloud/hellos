@@ -12,7 +12,7 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { SKILL_CATALOG } from "@/lib/helix/catalog";
 import { MAX_SKILLS_HARD, MAX_SKILLS_IN_PROMPT, TOKEN_BUDGET } from "@/lib/helix/governance";
-import { estimatePromptTokens, formatTokens } from "@/lib/helix/token";
+import { estimatePromptTokens, formatTokenLabel, formatTokens } from "@/lib/helix/token";
 import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
 import { toast } from "sonner";
@@ -46,10 +46,7 @@ function StudioPage() {
     "Linux companion for the Android hardening protocol: udev rule so only plugdev can talk to this phone, plus a read-only ADB snapshot.",
   );
   const [target, setTarget] = useState<string>("hardening");
-  const [slugs, setSlugs] = useState<string[]>([
-    "android-hardening-protocol",
-    "skill-creator",
-  ]);
+  const [slugs, setSlugs] = useState<string[]>(["android-hardening-protocol", "skill-creator"]);
   const [result, setResult] = useState<{
     protocol: string;
     script: string;
@@ -60,10 +57,7 @@ function StudioPage() {
     script: string;
   } | null>(null);
 
-  const catalog = (data?.skills.length
-    ? data.skills
-    : SKILL_CATALOG
-  ).map((s) => ({
+  const catalog = (data?.skills.length ? data.skills : SKILL_CATALOG).map((s) => ({
     slug: s.slug,
     name: s.name,
     token_cost: "token_cost" in s ? s.token_cost : s.tokenCost,
@@ -92,7 +86,8 @@ function StudioPage() {
         <p className="text-xs tracking-[0.18em] text-muted uppercase">Skill creator</p>
         <h1 className="mt-1 font-serif text-4xl">Studio</h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Pre-plan tokens, then generate a Helix skill and Linux script. Governance caps you at three protocols.
+          Pre-plan tokens, then generate a Helix skill and Linux script. Governance caps you at
+          three protocols.
         </p>
       </header>
 
@@ -136,7 +131,12 @@ function StudioPage() {
           <label className="text-xs text-muted">Name</label>
           <Input className="mt-1" value={name} onChange={(e) => setName(e.target.value)} required />
           <label className="mt-4 block text-xs text-muted">Brief</label>
-          <Textarea className="mt-1" value={brief} onChange={(e) => setBrief(e.target.value)} required />
+          <Textarea
+            className="mt-1"
+            value={brief}
+            onChange={(e) => setBrief(e.target.value)}
+            required
+          />
           <label className="mt-4 block text-xs text-muted">Linux target</label>
           <div className="mt-2 flex flex-wrap gap-2">
             {TARGETS.map((t) => (
@@ -211,7 +211,10 @@ function StudioPage() {
         </aside>
       </section>
 
-      <Dialog open={pendingScript !== null} onOpenChange={(open) => !open && setPendingScript(null)}>
+      <Dialog
+        open={pendingScript !== null}
+        onOpenChange={(open) => !open && setPendingScript(null)}
+      >
         <DialogContent>
           <DialogTitle>Save this script?</DialogTitle>
           <DialogDescription>
@@ -275,7 +278,7 @@ function StudioPage() {
             <div className="flex items-center justify-between gap-3">
               <h2 className="font-serif text-2xl">Linux</h2>
               <div className="flex items-center gap-2">
-                <Badge>{formatTokens(result.estimate)}</Badge>
+                <Badge>{formatTokenLabel(result.estimate)}</Badge>
                 <CopyButton text={result.script} label="Copy script" />
               </div>
             </div>

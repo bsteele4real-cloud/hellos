@@ -5,7 +5,9 @@ export function localCompact(body: string): string {
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
-  const keep = lines.filter((line, index) => index === 0 || /^(#|-|\d+\.)/.test(line) || line.length < 140);
+  const keep = lines.filter(
+    (line, index) => index === 0 || /^(#|-|\d+\.)/.test(line) || line.length < 140,
+  );
   const text = (keep.length ? keep : lines.slice(0, 4)).join("\n");
   return text.slice(0, 900);
 }

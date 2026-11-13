@@ -1,12 +1,5 @@
 export type SkillCategory =
-  | "memory"
-  | "governance"
-  | "security"
-  | "build"
-  | "agents"
-  | "workflow"
-  | "tokens"
-  | "codegen";
+  "memory" | "governance" | "security" | "build" | "agents" | "workflow" | "tokens" | "codegen";
 
 export type CatalogSkill = {
   slug: string;

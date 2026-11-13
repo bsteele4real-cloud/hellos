@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { localCompact } from "@/lib/helix/compact";
 import { textForCompact } from "@/lib/helix/governance";
-import { compactBudget, formatTokens } from "@/lib/helix/token";
+import { compactBudget, formatTokenLabel, formatTokens } from "@/lib/helix/token";
 import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
 import { toast } from "sonner";
@@ -63,16 +63,16 @@ function MemoryPage() {
       <CompactConfirm
         open={confirmCompact}
         notes={raw.length}
-        preview={
-          raw[0] ? localCompact(textForCompact(raw[0].body, data.policies).text) : ""
-        }
+        preview={raw[0] ? localCompact(textForCompact(raw[0].body, data.policies).text) : ""}
         pending={actions.compact.isPending}
         onCancel={() => setConfirmCompact(false)}
         onConfirm={() => {
           void (async () => {
             try {
               const res = await actions.compact.mutateAsync();
-              toast.success(`Saved ${res.saved} tokens across ${res.notes} notes. Undo is on each note.`);
+              toast.success(
+                `Saved ${res.saved} tokens across ${res.notes} notes. Undo is on each note.`,
+              );
               setConfirmCompact(false);
             } catch (error) {
               toast.error(mutationErrorMessage(error));
@@ -84,7 +84,7 @@ function MemoryPage() {
       <section className="grid gap-3 sm:grid-cols-3">
         <Stat label="Notes" value={String(data.memories.length)} />
         <Stat label="Tokens now" value={formatTokens(total)} />
-        <Stat label="If compacted" value={formatTokens(potential) + " saved"} />
+        <Stat label="If shortened" value={`${formatTokenLabel(potential)} saved`} />
       </section>
 
       <form
@@ -105,8 +105,17 @@ function MemoryPage() {
       >
         <h2 className="font-serif text-2xl">Write</h2>
         <div className="mt-4 grid gap-3">
-          <Input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
-          <Input placeholder="tags, comma-separated" value={tags} onChange={(e) => setTags(e.target.value)} />
+          <Input
+            placeholder="Title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+          />
+          <Input
+            placeholder="tags, comma-separated"
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+          />
           <Textarea
             placeholder="Decision, path, or handoff. Not a transcript."
             value={body}
@@ -145,7 +154,7 @@ function MemoryPage() {
                     Undo
                   </Button>
                 )}
-                <Badge>{formatTokens(m.token_estimate)}</Badge>
+                <Badge>{formatTokenLabel(m.token_estimate)}</Badge>
               </div>
             </div>
             {m.tags && <p className="mt-1 text-xs text-subtle">{m.tags}</p>}

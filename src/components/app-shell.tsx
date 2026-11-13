@@ -72,14 +72,15 @@ export function AppShell({ children }: { children: ReactNode }) {
         {NAV.map((item) => {
           const active = pathname === item.to || pathname.startsWith(item.to + "/");
           return (
-            <Link
-              key={item.to}
-              to={item.to}
-              className={cn(
-                "flex min-h-14 flex-col items-center justify-center gap-1 text-[11px]",
-                active ? "text-fg" : "text-muted",
-              )}
-            >
+              <Link
+                key={item.to}
+                to={item.to}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex min-h-14 flex-col items-center justify-center gap-1 text-xs",
+                  active ? "text-fg" : "text-muted",
+                )}
+              >
               <item.icon className="size-4" />
               {item.label}
             </Link>

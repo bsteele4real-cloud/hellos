@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { CATEGORY_LABEL, skillBySlug } from "@/lib/helix/catalog";
-import { formatTokens } from "@/lib/helix/token";
+import { formatTokenLabel } from "@/lib/helix/token";
 import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
 import { toast } from "sonner";
@@ -60,7 +60,7 @@ function SkillDetail() {
         </div>
         <p className="mt-3 max-w-2xl text-sm text-muted">{summary}</p>
         <div className="mt-3 flex gap-2">
-          <Badge>{formatTokens(tokens)}</Badge>
+          <Badge>{formatTokenLabel(tokens)}</Badge>
           {installed && <Badge variant="signal">Installed</Badge>}
         </div>
       </header>

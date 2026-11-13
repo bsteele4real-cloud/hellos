@@ -130,7 +130,7 @@ describe("server-side generation gates", () => {
     assert.equal(destructiveGate(script, ON, true), "allow");
     assert.equal(destructiveGate(script, off("human-gate-destructive"), false), "allow");
     assert.equal(
-      scriptIsDestructive("# do not sudo\nmkdir -p \"$HOME/.local/share/helix\"\n"),
+      scriptIsDestructive('# do not sudo\nmkdir -p "$HOME/.local/share/helix"\n'),
       false,
     );
   });
@@ -146,7 +146,10 @@ describe("server-side generation gates", () => {
   it("blocks connector tools outside the read-only probe list", () => {
     assert.equal(connectorToolAllowed("gmail_search_messages", ON), null);
     assert.match(connectorToolAllowed("gmail_send_message", ON) ?? "", /read-only/);
-    assert.equal(connectorToolAllowed("gmail_send_message", off("connector-least-privilege")), null);
+    assert.equal(
+      connectorToolAllowed("gmail_send_message", off("connector-least-privilege")),
+      null,
+    );
   });
 
   it("caps playbooks at three skills while the library policy is on", () => {

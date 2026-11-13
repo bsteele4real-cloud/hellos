@@ -14,9 +14,7 @@ export function fallbackLinuxScript(input: {
   target: string;
   slugs: string[];
 }): string {
-  const skills = input.slugs
-    .map((s) => skillBySlug(s)?.name ?? s)
-    .join(", ");
+  const skills = input.slugs.map((s) => skillBySlug(s)?.name ?? s).join(", ");
   const body = scriptBody(input.target, input.brief);
   return `${HEADER}
 # Skill: ${input.name}
@@ -187,17 +185,11 @@ function shellEscape(s: string): string {
   return s.replace(/'/g, "").replace(/"/g, "").replace(/\$/g, "").replace(/`/g, "");
 }
 
-export function fallbackProtocol(input: {
-  name: string;
-  brief: string;
-  slugs: string[];
-}): string {
+export function fallbackProtocol(input: { name: string; brief: string; slugs: string[] }): string {
   const children = input.slugs
     .map((slug) => skillBySlug(slug))
     .filter((s): s is NonNullable<typeof s> => Boolean(s));
-  const inherited = children
-    .map((s) => `- ${s.name} (\`${s.slug}\`): ${s.summary}`)
-    .join("\n");
+  const inherited = children.map((s) => `- ${s.name} (\`${s.slug}\`): ${s.summary}`).join("\n");
   return `# ${input.name}
 
 ## Purpose

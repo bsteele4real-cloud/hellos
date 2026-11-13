@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { WeekChart } from "@/components/week-chart";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
 import { mutationErrorMessage } from "@/lib/helix/mutation-error";
-import { formatTokens } from "@/lib/helix/token";
+import { formatTokenLabel } from "@/lib/helix/token";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { toast } from "sonner";
 
@@ -44,7 +44,7 @@ function CommandPage() {
         <div>
           <p className="text-xs tracking-[0.18em] text-muted uppercase">Command</p>
           <h1 className="mt-1 font-serif text-4xl">
-            {initialized ? "Daily picture" : "Initialize Helix"}
+            {initialized ? "Today" : "Set up Helix"}
           </h1>
           <p className="mt-2 max-w-xl text-sm text-muted">
             {initialized
@@ -71,17 +71,17 @@ function CommandPage() {
       {initialized && (
         <>
           <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Productivity" value={`${today?.productivity ?? 0}`} hint="7-day index" />
+            <Stat label="Productivity" value={`${today?.productivity ?? 0}`} hint="From your summaries" />
             <Stat
               label="Tokens saved"
-              value={formatTokens(data.reports.reduce((a, r) => a + r.tokens_saved, 0))}
-              hint="compact + pre-plan"
+              value={formatTokenLabel(data.reports.reduce((a, r) => a + r.tokens_saved, 0))}
+              hint="From shortened notes"
             />
-            <Stat label="Flagged loops" value={String(flags.length)} hint="tutor, ≥3 repeats" />
+            <Stat label="Flagged mistakes" value={String(flags.length)} hint="Flagged after 3 repeats" />
             <Stat
               label="Installed skills"
               value={`${installed}/${data.skills.length}`}
-              hint={`${formatTokens(memTokens)} in memory`}
+              hint={`${formatTokenLabel(memTokens)} in notes`}
             />
           </section>
 

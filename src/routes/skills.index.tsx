@@ -11,7 +11,7 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { CATEGORY_LABEL, SKILL_CATALOG, type CatalogSkill } from "@/lib/helix/catalog";
 import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
-import { formatTokens } from "@/lib/helix/token";
+import { formatTokenLabel } from "@/lib/helix/token";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/skills/")({ component: SkillsRoute });
@@ -163,7 +163,7 @@ function SkillsPage({
                   </div>
                   <div className="mt-4 flex items-center justify-between gap-2">
                     <p className="font-mono text-xs text-subtle">
-                      {formatTokens(s.tokenCost)} · {s.origin}
+                      {formatTokenLabel(s.tokenCost)} · {s.origin}
                     </p>
                     {user && !catalogFallback && (
                       <label className="flex min-h-11 items-center gap-2 text-xs text-muted">

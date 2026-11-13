@@ -17,7 +17,12 @@ export function interpretCommand(raw: string): CommandIntent {
   if (lower === "/init" || lower === "init") return { type: "init" };
   if (lower === "/compact" || lower === "compact") return { type: "compact" };
   if (lower === "/report" || lower === "report") return { type: "report" };
-  if (lower === "/skill" || lower.startsWith("/skill ") || lower === "/skills" || lower.startsWith("/skills ")) {
+  if (
+    lower === "/skill" ||
+    lower.startsWith("/skill ") ||
+    lower === "/skills" ||
+    lower.startsWith("/skills ")
+  ) {
     return { type: "skills" };
   }
   if (lower.startsWith("/log mistake")) {

@@ -45,7 +45,10 @@ export function redactSecrets(input: string): { text: string; hits: number } {
   return { text, hits };
 }
 
-export function textForCompact(body: string, policies: PolicyFlag[]): { text: string; hits: number } {
+export function textForCompact(
+  body: string,
+  policies: PolicyFlag[],
+): { text: string; hits: number } {
   if (!isPolicyEnabled(policies, "redact-before-compact")) return { text: body, hits: 0 };
   return redactSecrets(body);
 }
@@ -126,10 +129,10 @@ export function destructiveGate(
   return confirmed ? "allow" : "confirm";
 }
 
-export function resolveGeneratedSkill(input: {
-  target: string;
-  policies: PolicyFlag[];
-}): { installed: false; origin: "generated" | "proposal" } {
+export function resolveGeneratedSkill(input: { target: string; policies: PolicyFlag[] }): {
+  installed: false;
+  origin: "generated" | "proposal";
+} {
   if (input.target === "loop" && isPolicyEnabled(input.policies, "improver-proposes-only")) {
     return { installed: false, origin: "proposal" };
   }

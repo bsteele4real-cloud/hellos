@@ -19,7 +19,10 @@ describe("protocol markdown", () => {
     const list = blocks[3];
     assert.equal(list?.type, "ul");
     if (list?.type === "ul") assert.equal(list.items[1], "`compact` first");
-    assert.equal(blocks.some((block) => (block as { type: string }).type === "html"), false);
+    assert.equal(
+      blocks.some((block) => (block as { type: string }).type === "html"),
+      false,
+    );
   });
 
   it("splits inline code and strong text without interpreting tags", () => {

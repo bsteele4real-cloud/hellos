@@ -18,7 +18,11 @@ const AGENT_ROLES: { slug: string; role: string; blurb: string }[] = [
   { slug: "agent-governance", role: "Governor", blurb: "Allow, deny, or defer gated actions." },
   { slug: "skill-creator", role: "Smith", blurb: "Draft skills and Linux from a brief." },
   { slug: "workflow-optimizer", role: "Tutor", blurb: "Flag loops and write the daily briefing." },
-  { slug: "agent-loop-improver", role: "Improver", blurb: "Observer. One skill edit per cycle. You merge it." },
+  {
+    slug: "agent-loop-improver",
+    role: "Improver",
+    blurb: "Observer. One skill edit per cycle. You merge it.",
+  },
   { slug: "android-hardening-protocol", role: "Hardener", blurb: "Device and host snapshots." },
   { slug: "multi-agent-systems", role: "Swarm lead", blurb: "Handoffs, never full-thread copies." },
   { slug: "precision-token-engineering", role: "Token smith", blurb: "Budgets and compact." },
@@ -50,7 +54,8 @@ function OversightPage() {
         <p className="text-xs tracking-[0.18em] text-muted uppercase">Admin</p>
         <h1 className="mt-1 font-serif text-4xl">Oversight</h1>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          You are {data.profile.role}. Policies gate agents. Connectors stay read-only until a human confirms a write.
+          You are {data.profile.role}. Policies gate agents. Connectors stay read-only until a human
+          confirms a write.
         </p>
       </header>
 
@@ -70,16 +75,20 @@ function OversightPage() {
               <Switch
                 checked={p.enabled}
                 onCheckedChange={(enabled) => {
-                  void actions.policy.mutateAsync({ slug: p.slug, enabled }).catch((error: unknown) => {
-                    toast.error(mutationErrorMessage(error));
-                  });
+                  void actions.policy
+                    .mutateAsync({ slug: p.slug, enabled })
+                    .catch((error: unknown) => {
+                      toast.error(mutationErrorMessage(error));
+                    });
                 }}
                 aria-label={p.name}
               />
             </li>
           ))}
           {data.policies.length === 0 && (
-            <p className="text-sm text-muted">Set up the workspace from Command to load the default rules.</p>
+            <p className="text-sm text-muted">
+              Set up the workspace from Command to load the default rules.
+            </p>
           )}
         </ul>
       </section>
@@ -175,7 +184,9 @@ function OversightPage() {
       <section>
         <h2 className="font-serif text-2xl">Playbooks</h2>
         {data.combos.length === 0 ? (
-          <p className="mt-2 text-sm text-muted">Combine skills in the library to land a playbook here.</p>
+          <p className="mt-2 text-sm text-muted">
+            Combine skills in the library to land a playbook here.
+          </p>
         ) : (
           <ul className="mt-4 space-y-3">
             {data.combos.map((c) => (

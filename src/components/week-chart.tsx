@@ -14,7 +14,13 @@ export function WeekChart({ reports }: { reports: ReportRow[] }) {
   const [ready, setReady] = useState(false);
   useEffect(() => setReady(true), []);
   if (!ready) {
-    return <div className="h-48 animate-pulse rounded-xl bg-elevated" aria-hidden="true" />;
+    return (
+      <div
+        className="h-48 animate-pulse rounded-xl bg-elevated"
+        role="status"
+        aria-label="Loading token chart"
+      />
+    );
   }
   if (reports.length === 0) {
     return (
@@ -31,49 +37,70 @@ export function WeekChart({ reports }: { reports: ReportRow[] }) {
   }));
   return (
     <div className="h-48 w-full">
-      <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid stroke="rgb(255 255 255 / 0.06)" vertical={false} />
-          <XAxis
-            dataKey="day"
-            tick={{ fill: "var(--color-muted)", fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            tick={{ fill: "var(--color-muted)", fontSize: 11 }}
-            axisLine={false}
-            tickLine={false}
-            width={36}
-          />
-          <Tooltip
-            contentStyle={{
-              background: "var(--color-surface)",
-              border: "1px solid var(--color-border)",
-              borderRadius: 12,
-              color: "var(--color-fg)",
-            }}
-          />
-          <Area
-            type="monotone"
-            dataKey="saved"
-            stroke="var(--color-signal)"
-            fill="var(--color-signal)"
-            fillOpacity={0.18}
-            strokeWidth={1.6}
-            name="Tokens saved"
-          />
-          <Area
-            type="monotone"
-            dataKey="spent"
-            stroke="var(--color-muted)"
-            fill="var(--color-muted)"
-            fillOpacity={0.08}
-            strokeWidth={1.4}
-            name="Tokens spent"
-          />
-        </AreaChart>
-      </ResponsiveContainer>
+      <table className="sr-only">
+        <caption>Tokens saved and spent by day</caption>
+        <thead>
+          <tr>
+            <th>Day</th>
+            <th>Tokens saved</th>
+            <th>Tokens spent</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((row) => (
+            <tr key={row.day}>
+              <th scope="row">{row.day}</th>
+              <td>{row.saved} tokens saved</td>
+              <td>{row.spent} tokens spent</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="h-full" aria-hidden="true">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke="rgb(255 255 255 / 0.06)" vertical={false} />
+            <XAxis
+              dataKey="day"
+              tick={{ fill: "var(--color-muted)", fontSize: 12 }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis
+              tick={{ fill: "var(--color-muted)", fontSize: 12 }}
+              axisLine={false}
+              tickLine={false}
+              width={36}
+            />
+            <Tooltip
+              contentStyle={{
+                background: "var(--color-surface)",
+                border: "1px solid var(--color-border)",
+                borderRadius: 12,
+                color: "var(--color-fg)",
+              }}
+            />
+            <Area
+              type="monotone"
+              dataKey="saved"
+              stroke="var(--color-signal)"
+              fill="var(--color-signal)"
+              fillOpacity={0.18}
+              strokeWidth={1.6}
+              name="Tokens saved"
+            />
+            <Area
+              type="monotone"
+              dataKey="spent"
+              stroke="var(--color-muted)"
+              fill="var(--color-muted)"
+              fillOpacity={0.08}
+              strokeWidth={1.4}
+              name="Tokens spent"
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }

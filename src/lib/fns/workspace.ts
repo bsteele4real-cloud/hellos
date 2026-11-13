@@ -423,7 +423,9 @@ export const generateSkill = createServerFn({ method: "POST" })
       name: input.name.trim().slice(0, 80),
       brief: input.brief.trim().slice(0, 2000),
       target: input.target,
-      slugs: input.slugs.filter((slug) => typeof slug === "string" && slug).slice(0, MAX_SKILLS_HARD),
+      slugs: input.slugs
+        .filter((slug) => typeof slug === "string" && slug)
+        .slice(0, MAX_SKILLS_HARD),
       confirmDestructive: Boolean(input.confirmDestructive),
       draftProtocol: (input.draftProtocol ?? "").slice(0, 20000),
       draftScript: (input.draftScript ?? "").slice(0, 20000),
@@ -476,7 +478,10 @@ Rules: bash must start with #!/usr/bin/env bash and set -euo pipefail. No curl|s
       );
       if (ai) {
         try {
-          const cleaned = ai.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+          const cleaned = ai
+            .replace(/^```(?:json)?\s*/i, "")
+            .replace(/\s*```$/, "")
+            .trim();
           const parsed = JSON.parse(cleaned) as { protocol?: string; script?: string };
           if (parsed.protocol) protocol = parsed.protocol;
           if (parsed.script) script = parsed.script;
@@ -574,7 +579,10 @@ export const writeDailyReport = createServerFn({ method: "POST" })
     let summary = `Today's loop: ${top}. ${flagged.length} flagged patterns. ${todayEvents} recent events. Tokens saved this week: ${tokensSaved}. Compact before the next generation.`;
     const policies = await loadPolicyFlags(context.userId);
     const briefing = textForCompact(
-      `Write a 80-120 word daily tutor briefing for an operator. Be specific, not moralizing.\nFlagged: ${flagged.map((m) => `${m.pattern} (${m.count}×) — ${m.tutor_note}`).join("\n")}\nLatest events: ${ws.events.slice(0, 8).map((e) => e.label).join("; ")}`,
+      `Write a 80-120 word daily tutor briefing for an operator. Be specific, not moralizing.\nFlagged: ${flagged.map((m) => `${m.pattern} (${m.count}×) — ${m.tutor_note}`).join("\n")}\nLatest events: ${ws.events
+        .slice(0, 8)
+        .map((e) => e.label)
+        .join("; ")}`,
       policies,
     ).text;
     const ai = await askGrok(briefing, 220);
