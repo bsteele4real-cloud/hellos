@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { interpretCommand } from "./commands.ts";
+import { initSuccessMessage, interpretCommand } from "./commands.ts";
 
 describe("interpretCommand", () => {
   it("recognizes the built-in commands", () => {
@@ -29,5 +29,11 @@ describe("interpretCommand", () => {
     if (slash.type === "unknown") assert.match(slash.message, /Unknown command/);
     assert.equal(interpretCommand("/log").type, "unknown");
     assert.equal(interpretCommand("   ").type, "empty");
+  });
+
+  it("does not claim a fresh history when setup already happened", () => {
+    assert.match(initSuccessMessage(false), /starts empty/);
+    assert.match(initSuccessMessage(true), /already set up/);
+    assert.doesNotMatch(initSuccessMessage(true), /starts empty/);
   });
 });

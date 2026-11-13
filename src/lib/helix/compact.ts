@@ -23,6 +23,21 @@ export function compactNote(
   };
 }
 
+export function savingsFromCompact(beforeTokens: number, afterTokens: number): number {
+  return Math.max(0, beforeTokens - afterTokens);
+}
+
+export function tokensSavedAfterUndo(reportSaved: number, noteSaved: number): number {
+  return Math.max(0, reportSaved - Math.max(0, noteSaved));
+}
+
+export function reportDay(value: unknown): string | null {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
+  const text = String(value);
+  return /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : null;
+}
+
 export function undoNote(previousBody: string | null | undefined): string | null {
   if (!previousBody) return null;
   return previousBody;

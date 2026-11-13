@@ -65,6 +65,16 @@ export function buildCompactPrompt(
   };
 }
 
+/** Skills preselected in Studio. With the allowlist on, only installed skills are eligible. */
+export function studioSkillSelection(
+  skills: { slug: string; installed: boolean }[],
+  allowlistOn: boolean,
+  max = 2,
+): string[] {
+  const pool = allowlistOn ? skills.filter((skill) => skill.installed) : skills;
+  return pool.slice(0, max).map((skill) => skill.slug);
+}
+
 export function reviewGeneration(input: {
   skillCount: number;
   promptTokens: number;

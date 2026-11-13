@@ -9,6 +9,12 @@ export type CommandIntent =
 
 const UNKNOWN = "Unknown command. Use /init, /compact, /log, /log mistake, /report, or /skill.";
 
+export function initSuccessMessage(alreadySetUp: boolean): string {
+  return alreadySetUp
+    ? "Workspace already set up. Existing notes and history were kept."
+    : "Workspace ready. Your history starts empty.";
+}
+
 export function interpretCommand(raw: string): CommandIntent {
   const text = raw.trim();
   if (!text) return { type: "empty" };

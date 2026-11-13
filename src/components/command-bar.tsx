@@ -4,7 +4,7 @@ import { CompactConfirm } from "@/components/compact-confirm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { interpretCommand } from "@/lib/helix/commands";
+import { initSuccessMessage, interpretCommand } from "@/lib/helix/commands";
 import { localCompact } from "@/lib/helix/compact";
 import { textForCompact } from "@/lib/helix/governance";
 import { mutationErrorMessage } from "@/lib/helix/mutation-error";
@@ -25,8 +25,9 @@ export function CommandBar() {
     if (intent.type === "empty") return;
     try {
       if (intent.type === "init") {
+        const alreadySetUp = Boolean(ws.data?.profile.initialized_at);
         await actions.init.mutateAsync();
-        toast.success("Workspace ready. Your history starts empty.");
+        toast.success(initSuccessMessage(alreadySetUp));
       } else if (intent.type === "compact") {
         if (raw.length === 0) toast.message("Nothing to shorten.");
         else setConfirmCompact(true);

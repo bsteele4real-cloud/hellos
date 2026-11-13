@@ -13,6 +13,7 @@ import {
   resolveGeneratedSkill,
   reviewCombo,
   reviewGeneration,
+  studioSkillSelection,
   scriptIsDestructive,
   textForCompact,
   withPolicyFlag,
@@ -102,6 +103,21 @@ describe("server-side generation gates", () => {
       }),
       null,
     );
+  });
+
+  it("preselects only installed skills while the allowlist is on", () => {
+    const skills = [
+      { slug: "android-hardening-protocol", installed: false },
+      { slug: "skill-creator", installed: false },
+      { slug: "agent-secure-memory", installed: true },
+      { slug: "agent-governance", installed: true },
+    ];
+    assert.deepEqual(studioSkillSelection(skills, true), [
+      "agent-secure-memory",
+      "agent-governance",
+    ]);
+    assert.deepEqual(studioSkillSelection([], true), []);
+    assert.equal(studioSkillSelection(skills, false)[0], "android-hardening-protocol");
   });
 
   it("denies skills that are not installed while the allowlist is on", () => {

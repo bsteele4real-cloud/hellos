@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
 import { CopyButton } from "@/components/copy-button";
 import { ProtocolView } from "@/components/protocol-view";
@@ -11,7 +11,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { SKILL_CATALOG } from "@/lib/helix/catalog";
-import { MAX_SKILLS_HARD, MAX_SKILLS_IN_PROMPT, TOKEN_BUDGET } from "@/lib/helix/governance";
+import {
+  MAX_SKILLS_HARD,
+  MAX_SKILLS_IN_PROMPT,
+  TOKEN_BUDGET,
+  studioSkillSelection,
+} from "@/lib/helix/governance";
 import { estimatePromptTokens, formatTokenLabel, formatTokens } from "@/lib/helix/token";
 import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
@@ -46,7 +51,8 @@ function StudioPage() {
     "Linux companion for the Android hardening protocol: udev rule so only plugdev can talk to this phone, plus a read-only ADB snapshot.",
   );
   const [target, setTarget] = useState<string>("hardening");
-  const [slugs, setSlugs] = useState<string[]>(["android-hardening-protocol", "skill-creator"]);
+  const [slugs, setSlugs] = useState<string[]>([]);
+  const [slugsTouched, setSlugsTouched] = useState(false);
   const [result, setResult] = useState<{
     protocol: string;
     script: string;
@@ -66,7 +72,19 @@ function StudioPage() {
   const budgetOn = data?.policies.some((p) => p.slug === "token-budget-2k" && p.enabled) ?? true;
   const skillCapOn =
     data?.policies.some((p) => p.slug === "no-full-library-prompts" && p.enabled) ?? true;
+  const allowlistOn =
+    data?.policies.some((p) => p.slug === "agent-allowlist" && p.enabled) ?? true;
   const maxSkills = skillCapOn ? MAX_SKILLS_IN_PROMPT : MAX_SKILLS_HARD;
+  const installedKey =
+    data?.skills
+      .filter((skill) => skill.installed)
+      .map((skill) => skill.slug)
+      .join("|") ?? "";
+
+  useEffect(() => {
+    if (slugsTouched || !data?.skills.length) return;
+    setSlugs(studioSkillSelection(data.skills, allowlistOn));
+  }, [allowlistOn, data?.skills, installedKey, slugsTouched]);
 
   const plan = useMemo(() => {
     const selected = catalog.filter((s) => slugs.includes(s.slug));
@@ -165,6 +183,7 @@ function StudioPage() {
                   key={s.slug}
                   type="button"
                   onClick={() => {
+                    setSlugsTouched(true);
                     if (on) {
                       setSlugs((prev) => prev.filter((x) => x !== s.slug));
                       return;

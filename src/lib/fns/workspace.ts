@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import { CONNECTOR_CATALOG, skillBySlug } from "@/lib/helix/catalog";
-import { localCompact } from "@/lib/helix/compact";
+import { localCompact, reportDay, savingsFromCompact } from "@/lib/helix/compact";
 import {
   MAX_SKILLS_HARD,
   buildCompactPrompt,
@@ -288,6 +288,7 @@ export const compactMemory = createServerFn({ method: "POST" })
     }
 
     const policies = await loadPolicyFlags(context.userId);
+    const today = new Date().toISOString().slice(0, 10);
     let saved = 0;
     let spent = 0;
     let redacted = 0;
@@ -304,8 +305,11 @@ export const compactMemory = createServerFn({ method: "POST" })
         spent += 280;
       }
       const after = estimateTokens(compacted);
-      saved += Math.max(0, before - after);
-      await sql`update helix_memory set body = ${compacted}, previous_body = ${row.body}, compacted = true, token_estimate = ${after}
+      const noteSaved = savingsFromCompact(before, after);
+      saved += noteSaved;
+      await sql`update helix_memory
+        set body = ${compacted}, previous_body = ${row.body}, compacted = true,
+            token_estimate = ${after}, compact_saved = ${noteSaved}, compacted_on = ${today}
         where id = ${row.id} and user_id = ${context.userId}`;
     }
 
@@ -313,7 +317,6 @@ export const compactMemory = createServerFn({ method: "POST" })
     await sql`insert into helix_events (user_id, kind, label, detail)
       values (${context.userId}, 'compact', 'Compact complete', ${`Saved ${saved} tokens across ${rows.length} notes.`})`;
 
-    const today = new Date().toISOString().slice(0, 10);
     await sql`insert into helix_reports (user_id, report_date, summary, tokens_saved, tokens_spent, actions)
       values (${context.userId}, ${today}, ${"Compacted " + rows.length + " notes."}, ${saved}, ${spent}, 1)
       on conflict (user_id, report_date) do update set
@@ -330,14 +333,26 @@ export const undoCompact = createServerFn({ method: "POST" })
   .handler(async ({ context, data }) => {
     if (!Number.isInteger(data.id)) throw new Error("That note could not be restored.");
     const sql = await getSql();
-    const rows = await sql<{ previous_body: string | null }>`
-      select previous_body from helix_memory
+    const rows = await sql<{
+      previous_body: string | null;
+      compact_saved: number | null;
+      compacted_on: string | Date | null;
+    }>`
+      select previous_body, compact_saved, compacted_on from helix_memory
       where id = ${data.id} and user_id = ${context.userId}`;
     const previous = rows[0]?.previous_body;
     if (!previous) throw new Error("Nothing to undo for that note.");
     const tokens = estimateTokens(previous);
+    const credited = Math.max(0, Number(rows[0]?.compact_saved ?? 0));
+    const creditedOn = reportDay(rows[0]?.compacted_on);
+    if (credited > 0 && creditedOn) {
+      await sql`update helix_reports
+        set tokens_saved = greatest(0, tokens_saved - ${credited})
+        where user_id = ${context.userId} and report_date = ${creditedOn}`;
+    }
     await sql`update helix_memory
-      set body = ${previous}, previous_body = null, compacted = false, token_estimate = ${tokens}
+      set body = ${previous}, previous_body = null, compacted = false, token_estimate = ${tokens},
+          compact_saved = 0, compacted_on = null
       where id = ${data.id} and user_id = ${context.userId}`;
     await sql`insert into helix_events (user_id, kind, label, detail)
       values (${context.userId}, 'compact', 'Compact undone', 'Restored the previous note text.')`;
