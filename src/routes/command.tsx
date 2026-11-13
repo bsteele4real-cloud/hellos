@@ -61,7 +61,7 @@ function CommandPage() {
             }}
             disabled={actions.init.isPending}
           >
-            {actions.init.isPending ? "Initializing…" : "Run /init"}
+            {actions.init.isPending ? "Setting up…" : "Set up workspace"}
           </Button>
         )}
       </header>
@@ -133,7 +133,7 @@ function CommandPage() {
                   </li>
                 ))}
                 {data.mistakes.length === 0 && (
-                  <p className="text-sm text-muted">No loops yet. /log mistake when one appears.</p>
+                  <p className="text-sm text-muted">No mistakes yet. Use /log mistake when one shows up.</p>
                 )}
               </ul>
             </article>

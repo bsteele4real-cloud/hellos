@@ -43,24 +43,24 @@ function Home() {
         <section className="grid gap-10 pt-10 pb-16 md:grid-cols-[1.2fr_0.8fr] md:pt-16">
           <div>
             <p className="text-xs tracking-[0.2em] text-muted uppercase">
-              Second brain · skill library · governance
+              Skills, notes, and rules
             </p>
             <h1 className="mt-4 font-serif text-5xl font-medium tracking-tight md:text-6xl">
               Record the work.
               <br />
-              Compact the noise.
+              Shorten the noise.
             </h1>
             <p className="mt-5 max-w-xl text-base text-muted">
-              Helix is the operator command for Linux skill creation, shared
-              memory, and admin-gated agents. Init binds a user. Compact spends
-              fewer tokens. Repeated mistakes become a daily tutor, not another
-              forgotten log.
+              Helix keeps the skills you use, the notes you want to remember, and
+              the rules that limit what an agent can do. Set up a workspace, shorten
+              notes before generating a skill, and log a mistake when it happens
+              again. The third time, it gets flagged.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               {isPending ? (
                 <Button asChild>
                   <Link to="/login">
-                    Sign in to init <ArrowRight className="size-4" />
+                    Sign in to set up <ArrowRight className="size-4" />
                   </Link>
                 </Button>
               ) : (
@@ -75,7 +75,7 @@ function Home() {
                   <SignedOut>
                     <Button asChild>
                       <Link to="/login">
-                        Sign in to init <ArrowRight className="size-4" />
+                        Sign in to set up <ArrowRight className="size-4" />
                       </Link>
                     </Button>
                   </SignedOut>
@@ -90,10 +90,10 @@ function Home() {
             <p className="font-mono text-xs text-subtle">helix › command</p>
             <ul className="mt-4 space-y-3 text-sm">
               {[
-                ["/init", "Bind the operator. Start recording."],
-                ["/compact", "Shrink memory. Save tokens."],
-                ["/log mistake", "Flag a loop. Tutor after three."],
-                ["/report", "Daily briefing. One thing to break."],
+                ["/init", "Set up this workspace. History starts empty."],
+                ["/compact", "Shorten notes. You can undo each one."],
+                ["/log mistake", "Record a mistake."],
+                ["/report", "Write today's summary."],
               ].map(([cmd, copy]) => (
                 <li key={cmd} className="flex gap-3">
                   <code className="w-28 shrink-0 font-mono text-accent">{cmd}</code>
@@ -109,17 +109,17 @@ function Home() {
             {
               k: "01",
               t: "Skill library",
-              d: "Secure memory, governance, Android hardening, multi-agent, token engineering — combine into playbooks.",
+              d: "Memory, security, and Linux skills you can combine into a playbook.",
             },
             {
               k: "02",
-              t: "Pre-plan then generate",
-              d: "Estimate tokens before Linux codegen. Three skills max. Human gates on destructive scripts.",
+              t: "Plan, then generate",
+              d: "See the token estimate before a script is written. Three skills at a time, unless you turn that rule off.",
             },
             {
               k: "03",
               t: "Oversight",
-              d: "Policies, connectors, and a tutor that names the loop you keep walking into.",
+              d: "Turn rules on or off, check connectors, and see mistakes that keep repeating.",
             },
           ].map((item) => (
             <article

@@ -49,7 +49,7 @@ function MemoryPage() {
           <p className="text-xs tracking-[0.18em] text-muted uppercase">Second brain</p>
           <h1 className="mt-1 font-serif text-4xl">Shared memory</h1>
           <p className="mt-2 max-w-xl text-sm text-muted">
-            Agents recall compacted notes, not transcripts. /compact runs redaction first when governance is on.
+            Shortened notes are what get reused. Shorten removes secrets first when that rule is on.
           </p>
         </div>
         <Button
@@ -153,7 +153,7 @@ function MemoryPage() {
           </article>
         ))}
         {data.memories.length === 0 && (
-          <p className="text-sm text-muted">Empty brain. Write a note or run /init.</p>
+          <p className="text-sm text-muted">No notes yet. Write one here.</p>
         )}
       </section>
     </div>

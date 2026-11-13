@@ -79,7 +79,7 @@ function OversightPage() {
             </li>
           ))}
           {data.policies.length === 0 && (
-            <p className="text-sm text-muted">Run /init to seed default policies.</p>
+            <p className="text-sm text-muted">Set up the workspace from Command to load the default rules.</p>
           )}
         </ul>
       </section>
