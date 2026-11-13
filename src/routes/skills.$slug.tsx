@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { CATEGORY_LABEL, skillBySlug } from "@/lib/helix/catalog";
 import { formatTokens } from "@/lib/helix/token";
+import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
 import { toast } from "sonner";
 
@@ -41,7 +42,12 @@ function SkillDetail() {
             <Button
               variant={installed ? "secondary" : "default"}
               onClick={async () => {
-                await actions.skill.mutateAsync({ slug, installed: !installed });
+                try {
+                  await actions.skill.mutateAsync({ slug, installed: !installed });
+                } catch (error) {
+                  toast.error(mutationErrorMessage(error));
+                  return;
+                }
                 toast.success(installed ? "Removed from workspace" : "Installed");
               }}
             >

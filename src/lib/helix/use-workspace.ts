@@ -13,6 +13,7 @@ import {
   writeDailyReport,
   type Workspace,
 } from "@/lib/fns/workspace";
+import { withPolicyFlag } from "@/lib/helix/governance";
 import { queryClient } from "@/lib/query";
 
 export const WORKSPACE_KEY = ["helix-workspace"] as const;
@@ -55,9 +56,26 @@ export function useHelixActions() {
   const skill = useWsMutation((input: { slug: string; installed: boolean }) =>
     toggleSkill({ data: input }),
   );
-  const policy = useWsMutation((input: { slug: string; enabled: boolean }) =>
-    togglePolicy({ data: input }),
-  );
+  const policy = useMutation({
+    mutationFn: (input: { slug: string; enabled: boolean }) => togglePolicy({ data: input }),
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: WORKSPACE_KEY });
+      const previous = queryClient.getQueryData<Workspace>(WORKSPACE_KEY);
+      if (previous) {
+        queryClient.setQueryData<Workspace>(WORKSPACE_KEY, {
+          ...previous,
+          policies: withPolicyFlag(previous.policies, input.slug, input.enabled),
+        });
+      }
+      return { previous };
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previous) queryClient.setQueryData(WORKSPACE_KEY, context.previous);
+    },
+    onSuccess: (ws) => {
+      queryClient.setQueryData(WORKSPACE_KEY, ws);
+    },
+  });
   const report = useWsMutation(() => writeDailyReport());
   const combo = useMutation({
     mutationFn: (input: { name: string; slugs: string[] }) => combineSkills({ data: input }),

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { useHelixActions } from "@/lib/helix/use-workspace";
 import { toast } from "sonner";
 
@@ -47,8 +48,8 @@ export function CommandBar() {
         toast.success("Logged as an action. Prefix with /init, /compact, or /log mistake.");
       }
       setValue("");
-    } catch {
-      toast.error("Command failed. Sign in and try again.");
+    } catch (error) {
+      toast.error(mutationErrorMessage(error));
     }
   }
 

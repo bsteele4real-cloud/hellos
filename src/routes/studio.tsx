@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { SKILL_CATALOG } from "@/lib/helix/catalog";
 import { MAX_SKILLS_HARD, MAX_SKILLS_IN_PROMPT, TOKEN_BUDGET } from "@/lib/helix/governance";
 import { estimatePromptTokens, formatTokens } from "@/lib/helix/token";
+import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
 import { toast } from "sonner";
 
@@ -102,12 +103,18 @@ function StudioPage() {
               toast.error("Over 2,000 tokens. Drop a skill or shorten the brief.");
               return;
             }
-            const res = await actions.generate.mutateAsync({
-              name,
-              brief,
-              target,
-              slugs,
-            });
+            let res: Awaited<ReturnType<typeof actions.generate.mutateAsync>>;
+            try {
+              res = await actions.generate.mutateAsync({
+                name,
+                brief,
+                target,
+                slugs,
+              });
+            } catch (error) {
+              toast.error(mutationErrorMessage(error));
+              return;
+            }
             if (res.error) {
               toast.error(res.error);
               return;
@@ -217,15 +224,21 @@ function StudioPage() {
             disabled={actions.generate.isPending}
             onClick={async () => {
               if (!pendingScript) return;
-              const res = await actions.generate.mutateAsync({
-                name,
-                brief,
-                target,
-                slugs,
-                confirmDestructive: true,
-                draftProtocol: pendingScript.protocol,
-                draftScript: pendingScript.script,
-              });
+              let res: Awaited<ReturnType<typeof actions.generate.mutateAsync>>;
+              try {
+                res = await actions.generate.mutateAsync({
+                  name,
+                  brief,
+                  target,
+                  slugs,
+                  confirmDestructive: true,
+                  draftProtocol: pendingScript.protocol,
+                  draftScript: pendingScript.script,
+                });
+              } catch (error) {
+                toast.error(mutationErrorMessage(error));
+                return;
+              }
               if (res.error) {
                 toast.error(res.error);
                 return;

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { compactBudget, formatTokens } from "@/lib/helix/token";
+import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
 import { toast } from "sonner";
 
@@ -49,8 +50,12 @@ function MemoryPage() {
         </div>
         <Button
           onClick={async () => {
-            const res = await actions.compact.mutateAsync();
-            toast.success(`Saved ${res.saved} tokens across ${res.notes} notes.`);
+            try {
+              const res = await actions.compact.mutateAsync();
+              toast.success(`Saved ${res.saved} tokens across ${res.notes} notes.`);
+            } catch (error) {
+              toast.error(mutationErrorMessage(error));
+            }
           }}
           disabled={actions.compact.isPending || raw.length === 0}
         >
@@ -68,7 +73,12 @@ function MemoryPage() {
         className="rounded-2xl bg-surface p-5 shadow-[0_0_0_1px_rgb(255_255_255/0.08)]"
         onSubmit={async (e) => {
           e.preventDefault();
-          await actions.memory.mutateAsync({ title, body, tags });
+          try {
+            await actions.memory.mutateAsync({ title, body, tags });
+          } catch (error) {
+            toast.error(mutationErrorMessage(error));
+            return;
+          }
           setTitle("");
           setBody("");
           setTags("");

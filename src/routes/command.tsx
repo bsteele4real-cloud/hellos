@@ -6,8 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { WeekChart } from "@/components/week-chart";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
+import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { formatTokens } from "@/lib/helix/token";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/command")({ component: CommandRoute });
 
@@ -52,7 +54,11 @@ function CommandPage() {
         </div>
         {!initialized && (
           <Button
-            onClick={() => actions.init.mutate()}
+            onClick={() => {
+              actions.init.mutate(undefined, {
+                onError: (error) => toast.error(mutationErrorMessage(error)),
+              });
+            }}
             disabled={actions.init.isPending}
           >
             {actions.init.isPending ? "Initializing…" : "Run /init"}
@@ -95,7 +101,12 @@ function CommandPage() {
                 <Button
                   size="sm"
                   variant="secondary"
-                  onClick={() => actions.report.mutate()}
+                  onClick={() => {
+                    actions.report.mutate(undefined, {
+                      onError: (error) => toast.error(mutationErrorMessage(error)),
+                      onSuccess: () => toast.success("Daily summary written."),
+                    });
+                  }}
                   disabled={actions.report.isPending}
                 >
                   Refresh

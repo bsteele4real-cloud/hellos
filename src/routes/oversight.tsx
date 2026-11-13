@@ -7,6 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { redirectToLoginIfRequired } from "@/lib/app-data";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { CONNECTOR_CATALOG } from "@/lib/helix/catalog";
+import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
 import { toast } from "sonner";
 
@@ -69,7 +70,9 @@ function OversightPage() {
               <Switch
                 checked={p.enabled}
                 onCheckedChange={(enabled) => {
-                  void actions.policy.mutateAsync({ slug: p.slug, enabled });
+                  void actions.policy.mutateAsync({ slug: p.slug, enabled }).catch((error: unknown) => {
+                    toast.error(mutationErrorMessage(error));
+                  });
                 }}
                 aria-label={p.name}
               />
@@ -136,7 +139,13 @@ function OversightPage() {
                   variant="secondary"
                   disabled={actions.probe.isPending}
                   onClick={async () => {
-                    const res = await actions.probe.mutateAsync(c.provider);
+                    let res: Awaited<ReturnType<typeof actions.probe.mutateAsync>>;
+                    try {
+                      res = await actions.probe.mutateAsync(c.provider);
+                    } catch (error) {
+                      toast.error(mutationErrorMessage(error));
+                      return;
+                    }
                     if (res.error) {
                       toast.error(res.error);
                       return;

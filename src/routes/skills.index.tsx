@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { CATEGORY_LABEL, SKILL_CATALOG, type CatalogSkill } from "@/lib/helix/catalog";
+import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
 import { formatTokens } from "@/lib/helix/token";
 import { toast } from "sonner";
@@ -209,7 +210,13 @@ function SkillsPage({
             className="mt-4 w-full"
             disabled={actions.combo.isPending}
             onClick={async () => {
-              const res = await actions.combo.mutateAsync({ name: comboName, slugs: picked });
+              let res: Awaited<ReturnType<typeof actions.combo.mutateAsync>>;
+              try {
+                res = await actions.combo.mutateAsync({ name: comboName, slugs: picked });
+              } catch (error) {
+                toast.error(mutationErrorMessage(error));
+                return;
+              }
               if (res.error) {
                 toast.error(res.error);
                 return;
