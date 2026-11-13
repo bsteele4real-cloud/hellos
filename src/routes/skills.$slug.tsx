@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
+import { PageLoading } from "@/components/page-loading";
 import { CopyButton } from "@/components/copy-button";
 import { HelixMark } from "@/components/helix-mark";
 import { ProtocolView } from "@/components/protocol-view";
@@ -80,7 +81,7 @@ function SkillDetail() {
     </article>
   );
 
-  if (isPending) return <div className="min-h-dvh bg-bg" />;
+  if (isPending) return <PageLoading label="Loading skill…" />;
   if (user) return <AppShell>{inner}</AppShell>;
   return (
     <div className="min-h-dvh bg-bg text-fg">

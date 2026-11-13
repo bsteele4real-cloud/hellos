@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState, type ReactNode } from "react";
 import { HelixMark } from "@/components/helix-mark";
+import { PageLoading } from "@/components/page-loading";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,7 @@ function SkillsRoute() {
   const ws = useWorkspace(authed && !isPending);
 
   if (isPending) {
-    return <div className="min-h-dvh bg-bg" />;
+    return <PageLoading label="Loading skills…" />;
   }
 
   if (authed) {
