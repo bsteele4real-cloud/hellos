@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { SKILL_CATALOG } from "@/lib/helix/catalog";
-import { estimateTokens, formatTokens } from "@/lib/helix/token";
+import { MAX_SKILLS_HARD, MAX_SKILLS_IN_PROMPT, TOKEN_BUDGET } from "@/lib/helix/governance";
+import { estimatePromptTokens, formatTokens } from "@/lib/helix/token";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
 import { toast } from "sonner";
 
@@ -50,6 +52,10 @@ function StudioPage() {
     script: string;
     estimate: number;
   } | null>(null);
+  const [pendingScript, setPendingScript] = useState<{
+    protocol: string;
+    script: string;
+  } | null>(null);
 
   const catalog = (data?.skills.length
     ? data.skills
@@ -60,13 +66,20 @@ function StudioPage() {
     token_cost: "token_cost" in s ? s.token_cost : s.tokenCost,
   }));
 
+  const budgetOn = data?.policies.some((p) => p.slug === "token-budget-2k" && p.enabled) ?? true;
+  const skillCapOn =
+    data?.policies.some((p) => p.slug === "no-full-library-prompts" && p.enabled) ?? true;
+  const maxSkills = skillCapOn ? MAX_SKILLS_IN_PROMPT : MAX_SKILLS_HARD;
+
   const plan = useMemo(() => {
     const selected = catalog.filter((s) => slugs.includes(s.slug));
-    const protocolTokens = selected.reduce((a, s) => a + s.token_cost, 0);
-    const briefTokens = estimateTokens(name + " " + brief);
-    const total = protocolTokens + briefTokens + 180;
-    return { total, over: total > 2000, selected: selected.length };
-  }, [brief, catalog, name, slugs]);
+    const total = estimatePromptTokens({
+      skillTokenCosts: selected.map((s) => s.token_cost),
+      name,
+      brief,
+    });
+    return { total, over: budgetOn && total > TOKEN_BUDGET, selected: selected.length };
+  }, [brief, budgetOn, catalog, name, slugs]);
 
   if (isPending) return <div className="h-64 animate-pulse rounded-2xl bg-surface" />;
 
@@ -86,7 +99,7 @@ function StudioPage() {
           onSubmit={async (e) => {
             e.preventDefault();
             if (plan.over) {
-              toast.error("Over 2k tokens. Drop a skill or shorten the brief.");
+              toast.error("Over 2,000 tokens. Drop a skill or shorten the brief.");
               return;
             }
             const res = await actions.generate.mutateAsync({
@@ -95,12 +108,20 @@ function StudioPage() {
               target,
               slugs,
             });
+            if (res.error) {
+              toast.error(res.error);
+              return;
+            }
+            if (res.needsConfirm) {
+              setPendingScript({ protocol: res.protocol, script: res.script });
+              return;
+            }
             setResult({
               protocol: res.protocol,
               script: res.script,
               estimate: res.estimate,
             });
-            toast.success("Draft saved to the library (uninstalled).");
+            toast.success("Draft saved to the library (not installed).");
           }}
         >
           <label className="text-xs text-muted">Name</label>
@@ -124,7 +145,9 @@ function StudioPage() {
               </button>
             ))}
           </div>
-          <label className="mt-4 block text-xs text-muted">Skills to include (max 3)</label>
+          <label className="mt-4 block text-xs text-muted">
+            Skills to include{skillCapOn ? " (max 3)" : ""}
+          </label>
           <div className="mt-2 flex flex-wrap gap-2">
             {catalog.map((s) => {
               const on = slugs.includes(s.slug);
@@ -132,15 +155,21 @@ function StudioPage() {
                 <button
                   key={s.slug}
                   type="button"
-                  onClick={() =>
-                    setSlugs((prev) =>
-                      on
-                        ? prev.filter((x) => x !== s.slug)
-                        : prev.length >= 3
-                          ? prev
-                          : [...prev, s.slug],
-                    )
-                  }
+                  onClick={() => {
+                    if (on) {
+                      setSlugs((prev) => prev.filter((x) => x !== s.slug));
+                      return;
+                    }
+                    if (slugs.length >= maxSkills) {
+                      toast.error(
+                        skillCapOn
+                          ? "Three skills is the limit while no-full-library prompts is on."
+                          : "You can include up to 12 skills.",
+                      );
+                      return;
+                    }
+                    setSlugs((prev) => [...prev, s.slug]);
+                  }}
                   className={
                     on
                       ? "h-11 rounded-full bg-elevated px-3 text-xs text-fg shadow-[0_0_0_1px_rgb(255_255_255/0.14)]"
@@ -163,7 +192,7 @@ function StudioPage() {
           <p className="text-sm text-muted">estimated prompt tokens</p>
           <div className="mt-4 flex gap-2">
             <Badge variant={plan.over ? "danger" : "signal"}>
-              {plan.over ? "Over budget" : "Within 2k"}
+              {budgetOn ? (plan.over ? "Over 2,000 tokens" : "Within 2,000 tokens") : "Budget off"}
             </Badge>
             <Badge>{plan.selected} skills</Badge>
           </div>
@@ -172,6 +201,52 @@ function StudioPage() {
           </p>
         </aside>
       </section>
+
+      <Dialog open={pendingScript !== null} onOpenChange={(open) => !open && setPendingScript(null)}>
+        <DialogContent>
+          <DialogTitle>Save this script?</DialogTitle>
+          <DialogDescription>
+            It uses a package install, firewall change, user change, or recursive delete. Those stay
+            blocked until you confirm. The script is not run from here.
+          </DialogDescription>
+          <pre className="mt-4 max-h-48 overflow-auto font-mono text-xs text-muted">
+            {pendingScript?.script}
+          </pre>
+          <Button
+            className="mt-4 w-full"
+            disabled={actions.generate.isPending}
+            onClick={async () => {
+              if (!pendingScript) return;
+              const res = await actions.generate.mutateAsync({
+                name,
+                brief,
+                target,
+                slugs,
+                confirmDestructive: true,
+                draftProtocol: pendingScript.protocol,
+                draftScript: pendingScript.script,
+              });
+              if (res.error) {
+                toast.error(res.error);
+                return;
+              }
+              if (res.needsConfirm) {
+                toast.error("Confirm the destructive commands before saving.");
+                return;
+              }
+              setResult({
+                protocol: res.protocol,
+                script: res.script,
+                estimate: res.estimate,
+              });
+              setPendingScript(null);
+              toast.success("Draft saved to the library (not installed).");
+            }}
+          >
+            Save draft
+          </Button>
+        </DialogContent>
+      </Dialog>
 
       {result && (
         <section className="grid gap-4 lg:grid-cols-2">

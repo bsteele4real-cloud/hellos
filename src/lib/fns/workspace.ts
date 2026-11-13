@@ -1,10 +1,21 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
-import { CONNECTOR_CATALOG } from "@/lib/helix/catalog";
+import { CONNECTOR_CATALOG, skillBySlug } from "@/lib/helix/catalog";
+import {
+  MAX_SKILLS_HARD,
+  buildCompactPrompt,
+  connectorToolAllowed,
+  destructiveGate,
+  resolveGeneratedSkill,
+  reviewCombo,
+  reviewGeneration,
+  textForCompact,
+  type PolicyFlag,
+} from "@/lib/helix/governance";
 import { fallbackLinuxScript, fallbackProtocol } from "@/lib/helix/linux";
 import { initialHistory, seedPolicies, seedSkills } from "@/lib/helix/seed";
-import { compactBudget, estimateTokens } from "@/lib/helix/token";
+import { compactBudget, estimatePromptTokens, estimateTokens } from "@/lib/helix/token";
 
 export type ProfileRow = {
   user_id: string;
@@ -104,6 +115,15 @@ export type Workspace = {
   connectors: ConnectorRow[];
   combos: ComboRow[];
 };
+
+async function loadPolicyFlags(userId: string): Promise<PolicyFlag[]> {
+  const sql = await getSql();
+  return sql<PolicyFlag>`select slug, enabled from helix_policies where user_id = ${userId}`;
+}
+
+function uninstalledSlugs(slugs: string[], rows: { slug: string; installed: boolean }[]): string[] {
+  return slugs.filter((slug) => !rows.some((row) => row.slug === slug && row.installed));
+}
 
 async function syncCatalog(userId: string) {
   const sql = await getSql();
@@ -274,20 +294,23 @@ export const compactMemory = createServerFn({ method: "POST" })
     if (rows.length === 0) {
       await sql`insert into helix_events (user_id, kind, label, detail)
         values (${context.userId}, 'compact', 'Compact skipped', 'Nothing left to compact.')`;
-      return { workspace: await loadWorkspace(context.userId), saved: 0, notes: 0 };
+      return { workspace: await loadWorkspace(context.userId), saved: 0, notes: 0, redacted: 0 };
     }
 
+    const policies = await loadPolicyFlags(context.userId);
     let saved = 0;
     let spent = 0;
+    let redacted = 0;
     for (const row of rows) {
       const before = row.token_estimate || estimateTokens(row.body);
-      let compacted = localCompact(row.body);
-      const ai = await askGrok(
-        `Compact this operator memory. Keep titles, decisions, paths, names. Drop narration. Output the compacted note only.\n\nTitle: ${row.title}\n\n${row.body}`,
-        280,
-      );
+      const prepared = buildCompactPrompt(row.title, row.body, policies);
+      redacted += prepared.hits;
+      let compacted = localCompact(textForCompact(row.body, policies).text);
+      const ai = await askGrok(prepared.prompt, 280);
       if (ai) {
-        compacted = ai;
+        const safe = textForCompact(ai, policies);
+        compacted = safe.text;
+        redacted += safe.hits;
         spent += 280;
       }
       const after = estimateTokens(compacted);
@@ -308,7 +331,7 @@ export const compactMemory = createServerFn({ method: "POST" })
         tokens_spent = helix_reports.tokens_spent + excluded.tokens_spent,
         actions = helix_reports.actions + 1`;
 
-    return { workspace: await loadWorkspace(context.userId), saved, notes: rows.length };
+    return { workspace: await loadWorkspace(context.userId), saved, notes: rows.length, redacted };
   });
 
 function normalizePattern(raw: string): string {
@@ -377,50 +400,107 @@ export const togglePolicy = createServerFn({ method: "POST" })
 
 export const generateSkill = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((input: { name: string; brief: string; target: string; slugs: string[] }) => ({
-    name: input.name.trim().slice(0, 80),
-    brief: input.brief.trim().slice(0, 2000),
-    target: input.target,
-    slugs: input.slugs.slice(0, 3),
-  }))
+  .validator(
+    (input: {
+      name: string;
+      brief: string;
+      target: string;
+      slugs: string[];
+      confirmDestructive?: boolean;
+      draftProtocol?: string;
+      draftScript?: string;
+    }) => ({
+      name: input.name.trim().slice(0, 80),
+      brief: input.brief.trim().slice(0, 2000),
+      target: input.target,
+      slugs: input.slugs.filter((slug) => typeof slug === "string" && slug).slice(0, MAX_SKILLS_HARD),
+      confirmDestructive: Boolean(input.confirmDestructive),
+      draftProtocol: (input.draftProtocol ?? "").slice(0, 20000),
+      draftScript: (input.draftScript ?? "").slice(0, 20000),
+    }),
+  )
   .handler(async ({ context, data }) => {
     const sql = await getSql();
-    let protocol = fallbackProtocol(data);
-    let script = fallbackLinuxScript(data);
-    const estimate = estimateTokens(protocol + script + data.brief);
-    const budget = compactBudget(estimate);
+    const policies = await loadPolicyFlags(context.userId);
+    const rows = await sql<Pick<SkillRow, "slug" | "installed" | "token_cost">>`
+      select slug, installed, token_cost from helix_skills where user_id = ${context.userId}`;
+    const promptTokens = estimatePromptTokens({
+      skillTokenCosts: data.slugs.map((slug) => {
+        const row = rows.find((item) => item.slug === slug);
+        return row?.token_cost ?? skillBySlug(slug)?.tokenCost ?? 200;
+      }),
+      name: data.name,
+      brief: data.brief,
+    });
+    const denied = reviewGeneration({
+      skillCount: data.slugs.length,
+      promptTokens,
+      uninstalledSlugs: uninstalledSlugs(data.slugs, rows),
+      policies,
+    });
+    const workspace = await loadWorkspace(context.userId);
+    if (denied) {
+      return {
+        workspace,
+        protocol: "",
+        script: "",
+        estimate: promptTokens,
+        savedIfCompacted: 0,
+        needsConfirm: false,
+        error: denied,
+      };
+    }
 
-    const ai = await askGrok(
-      `Write a Helix skill. Return ONLY JSON with keys protocol (markdown) and script (bash).
+    const safeBrief = textForCompact(data.brief, policies).text;
+    let protocol = data.draftProtocol || fallbackProtocol({ ...data, brief: safeBrief });
+    let script = data.draftScript || fallbackLinuxScript({ ...data, brief: safeBrief });
+    if (!data.draftScript) {
+      const ai = await askGrok(
+        `Write a Helix skill. Return ONLY JSON with keys protocol (markdown) and script (bash).
 Name: ${data.name}
-Brief: ${data.brief}
+Brief: ${safeBrief}
 Linux target: ${data.target}
 Combine skills: ${data.slugs.join(", ") || "none"}
 Rules: bash must start with #!/usr/bin/env bash and set -euo pipefail. No curl|sh. No secrets. User-space paths. Protocol has Purpose, Steps, Out of scope.`,
-      900,
-    );
-    if (ai) {
-      try {
-        const cleaned = ai.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-        const parsed = JSON.parse(cleaned) as {
-          protocol?: string;
-          script?: string;
-        };
-        if (parsed.protocol) protocol = parsed.protocol;
-        if (parsed.script) script = parsed.script;
-      } catch {
-        /* keep fallback protocol + script */
+        900,
+      );
+      if (ai) {
+        try {
+          const cleaned = ai.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+          const parsed = JSON.parse(cleaned) as { protocol?: string; script?: string };
+          if (parsed.protocol) protocol = parsed.protocol;
+          if (parsed.script) script = parsed.script;
+        } catch {
+          /* keep fallback protocol + script */
+        }
       }
     }
+    protocol = textForCompact(protocol, policies).text;
+    script = textForCompact(script, policies).text;
+    const estimate = estimateTokens(protocol + script + safeBrief);
+    const budget = compactBudget(estimate);
+    if (destructiveGate(script, policies, data.confirmDestructive) === "confirm") {
+      return {
+        workspace,
+        protocol,
+        script,
+        estimate,
+        savedIfCompacted: budget.saved,
+        needsConfirm: true,
+        error: null,
+      };
+    }
 
-    const slug = data.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 48) || "custom-skill";
+    const savedAs = resolveGeneratedSkill({ target: data.target, policies });
+    const slug =
+      data.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 48) || "custom-skill";
 
     await sql`insert into helix_skills (user_id, slug, name, category, summary, protocol, linux_script, installed, token_cost, origin)
-      values (${context.userId}, ${slug + "-" + Date.now().toString(36)}, ${data.name}, 'codegen', ${data.brief.slice(0, 160)}, ${protocol}, ${script}, false, ${estimate}, 'generated')
+      values (${context.userId}, ${slug + "-" + Date.now().toString(36)}, ${data.name}, 'codegen', ${safeBrief.slice(0, 160)}, ${protocol}, ${script}, ${savedAs.installed}, ${estimate}, ${savedAs.origin})
       on conflict (user_id, slug) do nothing`;
     await sql`insert into helix_events (user_id, kind, label, detail)
       values (${context.userId}, 'generate', ${"Skill draft: " + data.name}, ${"est " + estimate + " tokens"})`;
@@ -431,6 +511,8 @@ Rules: bash must start with #!/usr/bin/env bash and set -euo pipefail. No curl|s
       script,
       estimate,
       savedIfCompacted: budget.saved,
+      needsConfirm: false,
+      error: null as string | null,
     };
   });
 
@@ -438,10 +520,12 @@ export const combineSkills = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { name: string; slugs: string[] }) => ({
     name: input.name.trim().slice(0, 80),
-    slugs: input.slugs.filter(Boolean).slice(0, 4),
+    slugs: input.slugs.filter(Boolean).slice(0, MAX_SKILLS_HARD),
   }))
   .handler(async ({ context, data }) => {
-    if (data.slugs.length < 2) return loadWorkspace(context.userId);
+    const policies = await loadPolicyFlags(context.userId);
+    const denied = reviewCombo(data.slugs.length, policies);
+    if (denied) return { workspace: await loadWorkspace(context.userId), error: denied };
     const sql = await getSql();
     const rows = await sql<SkillRow>`
       select id, slug, name, category, summary, protocol, linux_script, installed, token_cost, origin, created_at
@@ -449,6 +533,12 @@ export const combineSkills = createServerFn({ method: "POST" })
     const picked = data.slugs
       .map((s) => rows.find((r) => r.slug === s))
       .filter((s): s is SkillRow => Boolean(s));
+    if (picked.length < 2) {
+      return {
+        workspace: await loadWorkspace(context.userId),
+        error: "Pick at least two skills that are in this workspace.",
+      };
+    }
     const protocol = fallbackProtocol({
       name: data.name || picked.map((p) => p.name).join(" + "),
       brief: `Combined playbook of ${picked.map((p) => p.name).join(", ")}.`,
@@ -459,7 +549,7 @@ export const combineSkills = createServerFn({ method: "POST" })
       values (${context.userId}, ${name}, ${picked.map((p) => p.slug).join(",")}, ${protocol})`;
     await sql`insert into helix_events (user_id, kind, label, detail)
       values (${context.userId}, 'action', ${"Combo: " + name}, ${picked.map((p) => p.slug).join(", ")})`;
-    return loadWorkspace(context.userId);
+    return { workspace: await loadWorkspace(context.userId), error: null as string | null };
   });
 
 export const writeDailyReport = createServerFn({ method: "POST" })
@@ -472,10 +562,12 @@ export const writeDailyReport = createServerFn({ method: "POST" })
     const tokensSaved = ws.reports.reduce((a, r) => a + r.tokens_saved, 0);
     const top = flagged[0]?.pattern ?? "no flagged pattern";
     let summary = `Today's loop: ${top}. ${flagged.length} flagged patterns. ${todayEvents} recent events. Tokens saved this week: ${tokensSaved}. Compact before the next generation.`;
-    const ai = await askGrok(
+    const policies = await loadPolicyFlags(context.userId);
+    const briefing = textForCompact(
       `Write a 80-120 word daily tutor briefing for an operator. Be specific, not moralizing.\nFlagged: ${flagged.map((m) => `${m.pattern} (${m.count}×) — ${m.tutor_note}`).join("\n")}\nLatest events: ${ws.events.slice(0, 8).map((e) => e.label).join("; ")}`,
-      220,
-    );
+      policies,
+    ).text;
+    const ai = await askGrok(briefing, 220);
     if (ai) summary = ai;
     const today = new Date().toISOString().slice(0, 10);
     const productivity = Math.max(
@@ -517,6 +609,7 @@ export const probeConnector = createServerFn({ method: "POST" })
         workspace: await loadWorkspace(context.userId),
         loginUrl: null as string | null,
         loginRequired: false,
+        error: null as string | null,
       };
     }
     const toolMap: Record<string, { tool: string; args: Record<string, unknown> }> = {
@@ -528,6 +621,18 @@ export const probeConnector = createServerFn({ method: "POST" })
       MicrosoftTeams: { tool: "microsoft_teams_list_chats", args: {} },
     };
     const spec = toolMap[data.provider]!;
+    const policies = await loadPolicyFlags(context.userId);
+    const blockedTool = connectorToolAllowed(spec.tool, policies);
+    if (blockedTool) {
+      await sql`update helix_connectors set status = 'error', detail = ${blockedTool}, last_sync = now()
+        where user_id = ${context.userId} and provider = ${data.provider}`;
+      return {
+        workspace: await loadWorkspace(context.userId),
+        loginUrl: null as string | null,
+        loginRequired: false,
+        error: blockedTool,
+      };
+    }
     const result = await callTool(spec.tool, spec.args, { connectorType });
     let status = "error";
     let detail = result.errorMessage ?? "Unknown connector error";
@@ -545,5 +650,10 @@ export const probeConnector = createServerFn({ method: "POST" })
     await sql`insert into helix_events (user_id, kind, label, detail, severity)
       values (${context.userId}, 'connect', ${"Connector " + data.provider}, ${detail}, ${status === "connected" ? "info" : "warn"})`;
     const ws = await loadWorkspace(context.userId);
-    return { workspace: ws, loginUrl: result.loginUrl ?? null, loginRequired: Boolean(result.loginRequired) };
+    return {
+      workspace: ws,
+      loginUrl: result.loginUrl ?? null,
+      loginRequired: Boolean(result.loginRequired),
+      error: null as string | null,
+    };
   });

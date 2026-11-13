@@ -59,15 +59,19 @@ export function useHelixActions() {
     togglePolicy({ data: input }),
   );
   const report = useWsMutation(() => writeDailyReport());
-  const combo = useWsMutation((input: { name: string; slugs: string[] }) =>
-    combineSkills({ data: input }),
-  );
+  const combo = useMutation({
+    mutationFn: (input: { name: string; slugs: string[] }) => combineSkills({ data: input }),
+    onSuccess: (result) => cacheWorkspace(result.workspace),
+  });
   const generate = useMutation({
     mutationFn: (input: {
       name: string;
       brief: string;
       target: string;
       slugs: string[];
+      confirmDestructive?: boolean;
+      draftProtocol?: string;
+      draftScript?: string;
     }) => generateSkill({ data: input }),
     onSuccess: (result) => cacheWorkspace(result.workspace),
   });

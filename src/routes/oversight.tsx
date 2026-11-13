@@ -137,6 +137,10 @@ function OversightPage() {
                   disabled={actions.probe.isPending}
                   onClick={async () => {
                     const res = await actions.probe.mutateAsync(c.provider);
+                    if (res.error) {
+                      toast.error(res.error);
+                      return;
+                    }
                     if (res.loginRequired && res.loginUrl) {
                       redirectToLoginIfRequired({
                         ok: false,

@@ -209,7 +209,11 @@ function SkillsPage({
             className="mt-4 w-full"
             disabled={actions.combo.isPending}
             onClick={async () => {
-              await actions.combo.mutateAsync({ name: comboName, slugs: picked });
+              const res = await actions.combo.mutateAsync({ name: comboName, slugs: picked });
+              if (res.error) {
+                toast.error(res.error);
+                return;
+              }
               toast.success("Playbook saved.");
               setOpen(false);
               setPicked([]);
