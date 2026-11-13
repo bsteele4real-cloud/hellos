@@ -289,7 +289,7 @@ Turn a job description into a reusable skill: protocol markdown + optional Linux
 ## Linux bar
 - \`#!/usr/bin/env bash\` and \`set -euo pipefail\`.
 - Check dependencies before using them.
-- Write to \`\$HOME/.local\` unless the operator asked for system paths.
+- Write to \`$HOME/.local\` unless the operator asked for system paths.
 - Refuse \`curl | sh\`, wget-to-root, and disabling of security tools.
 
 ## Combine
