@@ -171,10 +171,12 @@ describe("server-side generation gates", () => {
 describe("compact wiring", () => {
   it("sends the redacted prompt helper, not the raw note body", () => {
     const src = readFileSync(new URL("../fns/workspace.ts", import.meta.url), "utf8");
-    assert.match(src, /buildCompactPrompt/);
+    assert.match(src, /buildCompactPrompt\(row\.title, row\.body, policies\)/);
+    assert.match(src, /askGrok\(prepared\.prompt/);
     assert.match(src, /reviewGeneration/);
     assert.match(src, /destructiveGate/);
     assert.match(src, /connectorToolAllowed/);
-    assert.doesNotMatch(src, /\$\{row\.body\}/);
+    assert.deepEqual(src.match(/\$\{row\.body\}/g), ["${row.body}"]);
+    assert.match(src, /previous_body = \$\{row\.body\}/);
   });
 });
