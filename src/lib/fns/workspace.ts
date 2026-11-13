@@ -1,16 +1,22 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
-import { CONNECTOR_CATALOG } from "@/lib/helix/catalog";
-import { fallbackLinuxScript, fallbackProtocol } from "@/lib/helix/linux";
+import { CONNECTOR_CATALOG, skillBySlug } from "@/lib/helix/catalog";
+import { localCompact, reportDay, savingsFromCompact } from "@/lib/helix/compact";
 import {
-  isoDaysAgo,
-  seedMemories,
-  seedMistakes,
-  seedPolicies,
-  seedSkills,
-} from "@/lib/helix/seed";
-import { compactBudget, estimateTokens } from "@/lib/helix/token";
+  MAX_SKILLS_HARD,
+  buildCompactPrompt,
+  connectorToolAllowed,
+  destructiveGate,
+  resolveGeneratedSkill,
+  reviewCombo,
+  reviewGeneration,
+  textForCompact,
+  type PolicyFlag,
+} from "@/lib/helix/governance";
+import { fallbackLinuxScript, fallbackProtocol } from "@/lib/helix/linux";
+import { initialHistory, seedPolicies, seedSkills } from "@/lib/helix/seed";
+import { compactBudget, estimatePromptTokens, estimateTokens } from "@/lib/helix/token";
 
 export type ProfileRow = {
   user_id: string;
@@ -42,6 +48,7 @@ export type MemoryRow = {
   tags: string;
   compacted: boolean;
   token_estimate: number;
+  previous_body: string | null;
   created_at: string;
 };
 
@@ -111,6 +118,15 @@ export type Workspace = {
   combos: ComboRow[];
 };
 
+async function loadPolicyFlags(userId: string): Promise<PolicyFlag[]> {
+  const sql = await getSql();
+  return sql<PolicyFlag>`select slug, enabled from helix_policies where user_id = ${userId}`;
+}
+
+function uninstalledSlugs(slugs: string[], rows: { slug: string; installed: boolean }[]): string[] {
+  return slugs.filter((slug) => !rows.some((row) => row.slug === slug && row.installed));
+}
+
 async function syncCatalog(userId: string) {
   const sql = await getSql();
   const have = await sql<{ slug: string }>`
@@ -146,7 +162,7 @@ async function loadWorkspace(userId: string): Promise<Workspace> {
   const [skills, memories, events, mistakes, policies, reports, connectors, combos] =
     await Promise.all([
       sql<SkillRow>`select id, slug, name, category, summary, protocol, linux_script, installed, token_cost, origin, created_at from helix_skills where user_id = ${userId} order by name`,
-      sql<MemoryRow>`select id, title, body, tags, compacted, token_estimate, created_at from helix_memory where user_id = ${userId} order by created_at desc`,
+      sql<MemoryRow>`select id, title, body, tags, compacted, token_estimate, previous_body, created_at from helix_memory where user_id = ${userId} order by created_at desc`,
       sql<EventRow>`select id, kind, label, detail, severity, created_at from helix_events where user_id = ${userId} order by created_at desc limit 80`,
       sql<MistakeRow>`select id, pattern, count, flagged, tutor_note, last_seen from helix_mistakes where user_id = ${userId} order by count desc`,
       sql<PolicyRow>`select id, slug, name, domain, rule, enabled from helix_policies where user_id = ${userId} order by name`,
@@ -197,53 +213,15 @@ export const runInit = createServerFn({ method: "POST" })
         values (${uid}, ${p.slug}, ${p.name}, ${p.domain}, ${p.rule}, ${p.enabled})
         on conflict (user_id, slug) do nothing`;
     }
-    for (const m of seedMemories()) {
-      await sql`insert into helix_memory (user_id, title, body, tags, token_estimate)
-        values (${uid}, ${m.title}, ${m.body}, ${m.tags}, ${m.token_estimate})`;
-    }
-    for (const m of seedMistakes) {
-      await sql`insert into helix_mistakes (user_id, pattern, count, flagged, tutor_note)
-        values (${uid}, ${m.pattern}, ${m.count}, ${m.flagged}, ${m.tutor_note})
-        on conflict (user_id, pattern) do nothing`;
-    }
     for (const c of CONNECTOR_CATALOG) {
       await sql`insert into helix_connectors (user_id, provider, status, detail)
         values (${uid}, ${c.provider}, 'idle', ${c.blurb})
         on conflict (user_id, provider) do nothing`;
     }
 
-    const eventPlan: { days: number; hour: number; kind: string; label: string; detail: string; severity: string }[] = [
-      { days: 6, hour: 8, kind: "action", label: "Pre-planned token budget", detail: "Dropped two unused skills from the prompt.", severity: "info" },
-      { days: 6, hour: 18, kind: "mistake", label: "Skipped compact", detail: "Pasted full memory into generation.", severity: "warn" },
-      { days: 5, hour: 9, kind: "action", label: "Installed workflow-optimizer", detail: "Tutor loop armed.", severity: "info" },
-      { days: 4, hour: 11, kind: "mistake", label: "Ran script with sudo", detail: "Generated job did not need root.", severity: "flag" },
-      { days: 3, hour: 8, kind: "compact", label: "Morning compact", detail: "Saved 1.2k tokens.", severity: "info" },
-      { days: 3, hour: 16, kind: "generate", label: "udev rule draft", detail: "Android host script, uninstalled.", severity: "info" },
-      { days: 2, hour: 10, kind: "mistake", label: "Skipped compact", detail: "Third occurrence this week.", severity: "flag" },
-      { days: 1, hour: 8, kind: "action", label: "Daily briefing", detail: "Flagged three patterns.", severity: "info" },
-      { days: 1, hour: 15, kind: "policy", label: "Enabled human-gate-destructive", detail: "Governor armed.", severity: "info" },
-      { days: 0, hour: 8, kind: "init", label: "Workspace initialized", detail: "User bound. Analytics live.", severity: "info" },
-    ];
-    for (const e of eventPlan) {
-      await sql`insert into helix_events (user_id, kind, label, detail, severity, created_at)
-        values (${uid}, ${e.kind}, ${e.label}, ${e.detail}, ${e.severity}, ${isoDaysAgo(e.days, e.hour)})`;
-    }
-
-    for (let d = 6; d >= 0; d--) {
-      const date = isoDaysAgo(d, 12).slice(0, 10);
-      const productivity = 58 + (6 - d) * 4 + (d === 4 ? -12 : 0);
-      const tokensSaved = 200 + d * 90;
-      const tokensSpent = 420 - d * 20;
-      const mistakesFlagged = d === 4 || d === 2 || d === 0 ? 1 : 0;
-      const actions = 6 + ((6 - d) % 4);
-      const summary =
-        d === 0
-          ? "Init complete. Three flagged loops remain. Compact before the next generation."
-          : `Day window ${date}: productivity ${productivity}, saved ${tokensSaved} tokens.`;
-      await sql`insert into helix_reports (user_id, report_date, summary, productivity, tokens_saved, tokens_spent, mistakes_flagged, actions)
-        values (${uid}, ${date}, ${summary}, ${productivity}, ${tokensSaved}, ${tokensSpent}, ${mistakesFlagged}, ${actions})
-        on conflict (user_id, report_date) do nothing`;
-    }
+    const history = initialHistory();
+    await sql`insert into helix_events (user_id, kind, label, detail, severity)
+      values (${uid}, ${history.event.kind}, ${history.event.label}, ${history.event.detail}, ${history.event.severity})`;
 
     await sql`update helix_profiles set initialized_at = now(), role = 'admin' where user_id = ${uid}`;
     return loadWorkspace(uid);
@@ -266,18 +244,6 @@ export const addMemory = createServerFn({ method: "POST" })
       values (${context.userId}, 'action', ${"Memory: " + data.title}, ${tokens + " tokens written"})`;
     return loadWorkspace(context.userId);
   });
-
-function localCompact(body: string): string {
-  const lines = body
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const keep = lines.filter(
-    (l, i) => i === 0 || /^(#|-|\d+\.)/.test(l) || l.length < 140,
-  );
-  const text = (keep.length ? keep : lines.slice(0, 4)).join("\n");
-  return text.slice(0, 900);
-}
 
 async function askGrok(prompt: string, maxTokens: number): Promise<string | null> {
   const apiKey = process.env.XAI_API_KEY;
@@ -313,30 +279,37 @@ export const compactMemory = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const sql = await getSql();
     const rows = await sql<MemoryRow>`
-      select id, title, body, tags, compacted, token_estimate, created_at
+      select id, title, body, tags, compacted, token_estimate, previous_body, created_at
       from helix_memory where user_id = ${context.userId} and compacted = false`;
     if (rows.length === 0) {
       await sql`insert into helix_events (user_id, kind, label, detail)
         values (${context.userId}, 'compact', 'Compact skipped', 'Nothing left to compact.')`;
-      return { workspace: await loadWorkspace(context.userId), saved: 0, notes: 0 };
+      return { workspace: await loadWorkspace(context.userId), saved: 0, notes: 0, redacted: 0 };
     }
 
+    const policies = await loadPolicyFlags(context.userId);
+    const today = new Date().toISOString().slice(0, 10);
     let saved = 0;
     let spent = 0;
+    let redacted = 0;
     for (const row of rows) {
       const before = row.token_estimate || estimateTokens(row.body);
-      let compacted = localCompact(row.body);
-      const ai = await askGrok(
-        `Compact this operator memory. Keep titles, decisions, paths, names. Drop narration. Output the compacted note only.\n\nTitle: ${row.title}\n\n${row.body}`,
-        280,
-      );
+      const prepared = buildCompactPrompt(row.title, row.body, policies);
+      redacted += prepared.hits;
+      let compacted = localCompact(textForCompact(row.body, policies).text);
+      const ai = await askGrok(prepared.prompt, 280);
       if (ai) {
-        compacted = ai;
+        const safe = textForCompact(ai, policies);
+        compacted = safe.text;
+        redacted += safe.hits;
         spent += 280;
       }
       const after = estimateTokens(compacted);
-      saved += Math.max(0, before - after);
-      await sql`update helix_memory set body = ${compacted}, compacted = true, token_estimate = ${after}
+      const noteSaved = savingsFromCompact(before, after);
+      saved += noteSaved;
+      await sql`update helix_memory
+        set body = ${compacted}, previous_body = ${row.body}, compacted = true,
+            token_estimate = ${after}, compact_saved = ${noteSaved}, compacted_on = ${today}
         where id = ${row.id} and user_id = ${context.userId}`;
     }
 
@@ -344,7 +317,6 @@ export const compactMemory = createServerFn({ method: "POST" })
     await sql`insert into helix_events (user_id, kind, label, detail)
       values (${context.userId}, 'compact', 'Compact complete', ${`Saved ${saved} tokens across ${rows.length} notes.`})`;
 
-    const today = new Date().toISOString().slice(0, 10);
     await sql`insert into helix_reports (user_id, report_date, summary, tokens_saved, tokens_spent, actions)
       values (${context.userId}, ${today}, ${"Compacted " + rows.length + " notes."}, ${saved}, ${spent}, 1)
       on conflict (user_id, report_date) do update set
@@ -352,7 +324,39 @@ export const compactMemory = createServerFn({ method: "POST" })
         tokens_spent = helix_reports.tokens_spent + excluded.tokens_spent,
         actions = helix_reports.actions + 1`;
 
-    return { workspace: await loadWorkspace(context.userId), saved, notes: rows.length };
+    return { workspace: await loadWorkspace(context.userId), saved, notes: rows.length, redacted };
+  });
+
+export const undoCompact = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { id: number }) => ({ id: Number(input.id) }))
+  .handler(async ({ context, data }) => {
+    if (!Number.isInteger(data.id)) throw new Error("That note could not be restored.");
+    const sql = await getSql();
+    const rows = await sql<{
+      previous_body: string | null;
+      compact_saved: number | null;
+      compacted_on: string | Date | null;
+    }>`
+      select previous_body, compact_saved, compacted_on from helix_memory
+      where id = ${data.id} and user_id = ${context.userId}`;
+    const previous = rows[0]?.previous_body;
+    if (!previous) throw new Error("Nothing to undo for that note.");
+    const tokens = estimateTokens(previous);
+    const credited = Math.max(0, Number(rows[0]?.compact_saved ?? 0));
+    const creditedOn = reportDay(rows[0]?.compacted_on);
+    if (credited > 0 && creditedOn) {
+      await sql`update helix_reports
+        set tokens_saved = greatest(0, tokens_saved - ${credited})
+        where user_id = ${context.userId} and report_date = ${creditedOn}`;
+    }
+    await sql`update helix_memory
+      set body = ${previous}, previous_body = null, compacted = false, token_estimate = ${tokens},
+          compact_saved = 0, compacted_on = null
+      where id = ${data.id} and user_id = ${context.userId}`;
+    await sql`insert into helix_events (user_id, kind, label, detail)
+      values (${context.userId}, 'compact', 'Compact undone', 'Restored the previous note text.')`;
+    return loadWorkspace(context.userId);
   });
 
 function normalizePattern(raw: string): string {
@@ -421,50 +425,112 @@ export const togglePolicy = createServerFn({ method: "POST" })
 
 export const generateSkill = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
-  .validator((input: { name: string; brief: string; target: string; slugs: string[] }) => ({
-    name: input.name.trim().slice(0, 80),
-    brief: input.brief.trim().slice(0, 2000),
-    target: input.target,
-    slugs: input.slugs.slice(0, 3),
-  }))
+  .validator(
+    (input: {
+      name: string;
+      brief: string;
+      target: string;
+      slugs: string[];
+      confirmDestructive?: boolean;
+      draftProtocol?: string;
+      draftScript?: string;
+    }) => ({
+      name: input.name.trim().slice(0, 80),
+      brief: input.brief.trim().slice(0, 2000),
+      target: input.target,
+      slugs: input.slugs
+        .filter((slug) => typeof slug === "string" && slug)
+        .slice(0, MAX_SKILLS_HARD),
+      confirmDestructive: Boolean(input.confirmDestructive),
+      draftProtocol: (input.draftProtocol ?? "").slice(0, 20000),
+      draftScript: (input.draftScript ?? "").slice(0, 20000),
+    }),
+  )
   .handler(async ({ context, data }) => {
     const sql = await getSql();
-    let protocol = fallbackProtocol(data);
-    let script = fallbackLinuxScript(data);
-    const estimate = estimateTokens(protocol + script + data.brief);
-    const budget = compactBudget(estimate);
+    const policies = await loadPolicyFlags(context.userId);
+    const rows = await sql<Pick<SkillRow, "slug" | "installed" | "token_cost">>`
+      select slug, installed, token_cost from helix_skills where user_id = ${context.userId}`;
+    const promptTokens = estimatePromptTokens({
+      skillTokenCosts: data.slugs.map((slug) => {
+        const row = rows.find((item) => item.slug === slug);
+        return row?.token_cost ?? skillBySlug(slug)?.tokenCost ?? 200;
+      }),
+      name: data.name,
+      brief: data.brief,
+    });
+    const denied = reviewGeneration({
+      skillCount: data.slugs.length,
+      promptTokens,
+      uninstalledSlugs: uninstalledSlugs(data.slugs, rows),
+      policies,
+    });
+    const workspace = await loadWorkspace(context.userId);
+    if (denied) {
+      return {
+        workspace,
+        protocol: "",
+        script: "",
+        estimate: promptTokens,
+        savedIfCompacted: 0,
+        needsConfirm: false,
+        error: denied,
+      };
+    }
 
-    const ai = await askGrok(
-      `Write a Helix skill. Return ONLY JSON with keys protocol (markdown) and script (bash).
+    const safeBrief = textForCompact(data.brief, policies).text;
+    let protocol = data.draftProtocol || fallbackProtocol({ ...data, brief: safeBrief });
+    let script = data.draftScript || fallbackLinuxScript({ ...data, brief: safeBrief });
+    if (!data.draftScript) {
+      const ai = await askGrok(
+        `Write a Helix skill. Return ONLY JSON with keys protocol (markdown) and script (bash).
 Name: ${data.name}
-Brief: ${data.brief}
+Brief: ${safeBrief}
 Linux target: ${data.target}
 Combine skills: ${data.slugs.join(", ") || "none"}
 Rules: bash must start with #!/usr/bin/env bash and set -euo pipefail. No curl|sh. No secrets. User-space paths. Protocol has Purpose, Steps, Out of scope.`,
-      900,
-    );
-    if (ai) {
-      try {
-        const cleaned = ai.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-        const parsed = JSON.parse(cleaned) as {
-          protocol?: string;
-          script?: string;
-        };
-        if (parsed.protocol) protocol = parsed.protocol;
-        if (parsed.script) script = parsed.script;
-      } catch {
-        /* keep fallback protocol + script */
+        900,
+      );
+      if (ai) {
+        try {
+          const cleaned = ai
+            .replace(/^```(?:json)?\s*/i, "")
+            .replace(/\s*```$/, "")
+            .trim();
+          const parsed = JSON.parse(cleaned) as { protocol?: string; script?: string };
+          if (parsed.protocol) protocol = parsed.protocol;
+          if (parsed.script) script = parsed.script;
+        } catch {
+          /* keep fallback protocol + script */
+        }
       }
     }
+    protocol = textForCompact(protocol, policies).text;
+    script = textForCompact(script, policies).text;
+    const estimate = estimateTokens(protocol + script + safeBrief);
+    const budget = compactBudget(estimate);
+    if (destructiveGate(script, policies, data.confirmDestructive) === "confirm") {
+      return {
+        workspace,
+        protocol,
+        script,
+        estimate,
+        savedIfCompacted: budget.saved,
+        needsConfirm: true,
+        error: null,
+      };
+    }
 
-    const slug = data.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "")
-      .slice(0, 48) || "custom-skill";
+    const savedAs = resolveGeneratedSkill({ target: data.target, policies });
+    const slug =
+      data.name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "")
+        .slice(0, 48) || "custom-skill";
 
     await sql`insert into helix_skills (user_id, slug, name, category, summary, protocol, linux_script, installed, token_cost, origin)
-      values (${context.userId}, ${slug + "-" + Date.now().toString(36)}, ${data.name}, 'codegen', ${data.brief.slice(0, 160)}, ${protocol}, ${script}, false, ${estimate}, 'generated')
+      values (${context.userId}, ${slug + "-" + Date.now().toString(36)}, ${data.name}, 'codegen', ${safeBrief.slice(0, 160)}, ${protocol}, ${script}, ${savedAs.installed}, ${estimate}, ${savedAs.origin})
       on conflict (user_id, slug) do nothing`;
     await sql`insert into helix_events (user_id, kind, label, detail)
       values (${context.userId}, 'generate', ${"Skill draft: " + data.name}, ${"est " + estimate + " tokens"})`;
@@ -475,6 +541,8 @@ Rules: bash must start with #!/usr/bin/env bash and set -euo pipefail. No curl|s
       script,
       estimate,
       savedIfCompacted: budget.saved,
+      needsConfirm: false,
+      error: null as string | null,
     };
   });
 
@@ -482,10 +550,12 @@ export const combineSkills = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { name: string; slugs: string[] }) => ({
     name: input.name.trim().slice(0, 80),
-    slugs: input.slugs.filter(Boolean).slice(0, 4),
+    slugs: input.slugs.filter(Boolean).slice(0, MAX_SKILLS_HARD),
   }))
   .handler(async ({ context, data }) => {
-    if (data.slugs.length < 2) return loadWorkspace(context.userId);
+    const policies = await loadPolicyFlags(context.userId);
+    const denied = reviewCombo(data.slugs.length, policies);
+    if (denied) return { workspace: await loadWorkspace(context.userId), error: denied };
     const sql = await getSql();
     const rows = await sql<SkillRow>`
       select id, slug, name, category, summary, protocol, linux_script, installed, token_cost, origin, created_at
@@ -493,6 +563,12 @@ export const combineSkills = createServerFn({ method: "POST" })
     const picked = data.slugs
       .map((s) => rows.find((r) => r.slug === s))
       .filter((s): s is SkillRow => Boolean(s));
+    if (picked.length < 2) {
+      return {
+        workspace: await loadWorkspace(context.userId),
+        error: "Pick at least two skills that are in this workspace.",
+      };
+    }
     const protocol = fallbackProtocol({
       name: data.name || picked.map((p) => p.name).join(" + "),
       brief: `Combined playbook of ${picked.map((p) => p.name).join(", ")}.`,
@@ -503,7 +579,7 @@ export const combineSkills = createServerFn({ method: "POST" })
       values (${context.userId}, ${name}, ${picked.map((p) => p.slug).join(",")}, ${protocol})`;
     await sql`insert into helix_events (user_id, kind, label, detail)
       values (${context.userId}, 'action', ${"Combo: " + name}, ${picked.map((p) => p.slug).join(", ")})`;
-    return loadWorkspace(context.userId);
+    return { workspace: await loadWorkspace(context.userId), error: null as string | null };
   });
 
 export const writeDailyReport = createServerFn({ method: "POST" })
@@ -516,10 +592,15 @@ export const writeDailyReport = createServerFn({ method: "POST" })
     const tokensSaved = ws.reports.reduce((a, r) => a + r.tokens_saved, 0);
     const top = flagged[0]?.pattern ?? "no flagged pattern";
     let summary = `Today's loop: ${top}. ${flagged.length} flagged patterns. ${todayEvents} recent events. Tokens saved this week: ${tokensSaved}. Compact before the next generation.`;
-    const ai = await askGrok(
-      `Write a 80-120 word daily tutor briefing for an operator. Be specific, not moralizing.\nFlagged: ${flagged.map((m) => `${m.pattern} (${m.count}×) — ${m.tutor_note}`).join("\n")}\nLatest events: ${ws.events.slice(0, 8).map((e) => e.label).join("; ")}`,
-      220,
-    );
+    const policies = await loadPolicyFlags(context.userId);
+    const briefing = textForCompact(
+      `Write a 80-120 word daily tutor briefing for an operator. Be specific, not moralizing.\nFlagged: ${flagged.map((m) => `${m.pattern} (${m.count}×) — ${m.tutor_note}`).join("\n")}\nLatest events: ${ws.events
+        .slice(0, 8)
+        .map((e) => e.label)
+        .join("; ")}`,
+      policies,
+    ).text;
+    const ai = await askGrok(briefing, 220);
     if (ai) summary = ai;
     const today = new Date().toISOString().slice(0, 10);
     const productivity = Math.max(
@@ -561,6 +642,7 @@ export const probeConnector = createServerFn({ method: "POST" })
         workspace: await loadWorkspace(context.userId),
         loginUrl: null as string | null,
         loginRequired: false,
+        error: null as string | null,
       };
     }
     const toolMap: Record<string, { tool: string; args: Record<string, unknown> }> = {
@@ -572,6 +654,18 @@ export const probeConnector = createServerFn({ method: "POST" })
       MicrosoftTeams: { tool: "microsoft_teams_list_chats", args: {} },
     };
     const spec = toolMap[data.provider]!;
+    const policies = await loadPolicyFlags(context.userId);
+    const blockedTool = connectorToolAllowed(spec.tool, policies);
+    if (blockedTool) {
+      await sql`update helix_connectors set status = 'error', detail = ${blockedTool}, last_sync = now()
+        where user_id = ${context.userId} and provider = ${data.provider}`;
+      return {
+        workspace: await loadWorkspace(context.userId),
+        loginUrl: null as string | null,
+        loginRequired: false,
+        error: blockedTool,
+      };
+    }
     const result = await callTool(spec.tool, spec.args, { connectorType });
     let status = "error";
     let detail = result.errorMessage ?? "Unknown connector error";
@@ -589,5 +683,10 @@ export const probeConnector = createServerFn({ method: "POST" })
     await sql`insert into helix_events (user_id, kind, label, detail, severity)
       values (${context.userId}, 'connect', ${"Connector " + data.provider}, ${detail}, ${status === "connected" ? "info" : "warn"})`;
     const ws = await loadWorkspace(context.userId);
-    return { workspace: ws, loginUrl: result.loginUrl ?? null, loginRequired: Boolean(result.loginRequired) };
+    return {
+      workspace: ws,
+      loginUrl: result.loginUrl ?? null,
+      loginRequired: Boolean(result.loginRequired),
+      error: null as string | null,
+    };
   });

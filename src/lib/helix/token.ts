@@ -16,3 +16,21 @@ export function formatTokens(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
   return String(n);
 }
+
+/** Fixed overhead the Studio pre-plan adds for the generation instruction. */
+export const PROMPT_OVERHEAD_TOKENS = 180;
+
+export function estimatePromptTokens(input: {
+  skillTokenCosts: number[];
+  name: string;
+  brief: string;
+}): number {
+  const protocolTokens = input.skillTokenCosts.reduce((sum, n) => sum + n, 0);
+  return protocolTokens + estimateTokens(`${input.name} ${input.brief}`) + PROMPT_OVERHEAD_TOKENS;
+}
+
+/** Badge and inline counts include the unit so "640" is not ambiguous. */
+export function formatTokenLabel(n: number): string {
+  const count = formatTokens(n);
+  return `${count} ${Math.abs(n) === 1 ? "token" : "tokens"}`;
+}

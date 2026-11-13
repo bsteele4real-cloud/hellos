@@ -10,9 +10,11 @@ import {
   runInit,
   togglePolicy,
   toggleSkill,
+  undoCompact,
   writeDailyReport,
   type Workspace,
 } from "@/lib/fns/workspace";
+import { withPolicyFlag } from "@/lib/helix/governance";
 import { queryClient } from "@/lib/query";
 
 export const WORKSPACE_KEY = ["helix-workspace"] as const;
@@ -52,22 +54,44 @@ export function useHelixActions() {
   const memory = useWsMutation((input: { title: string; body: string; tags: string }) =>
     addMemory({ data: input }),
   );
+  const undo = useWsMutation((input: { id: number }) => undoCompact({ data: input }));
   const skill = useWsMutation((input: { slug: string; installed: boolean }) =>
     toggleSkill({ data: input }),
   );
-  const policy = useWsMutation((input: { slug: string; enabled: boolean }) =>
-    togglePolicy({ data: input }),
-  );
+  const policy = useMutation({
+    mutationFn: (input: { slug: string; enabled: boolean }) => togglePolicy({ data: input }),
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: WORKSPACE_KEY });
+      const previous = queryClient.getQueryData<Workspace>(WORKSPACE_KEY);
+      if (previous) {
+        queryClient.setQueryData<Workspace>(WORKSPACE_KEY, {
+          ...previous,
+          policies: withPolicyFlag(previous.policies, input.slug, input.enabled),
+        });
+      }
+      return { previous };
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previous) queryClient.setQueryData(WORKSPACE_KEY, context.previous);
+    },
+    onSuccess: (ws) => {
+      queryClient.setQueryData(WORKSPACE_KEY, ws);
+    },
+  });
   const report = useWsMutation(() => writeDailyReport());
-  const combo = useWsMutation((input: { name: string; slugs: string[] }) =>
-    combineSkills({ data: input }),
-  );
+  const combo = useMutation({
+    mutationFn: (input: { name: string; slugs: string[] }) => combineSkills({ data: input }),
+    onSuccess: (result) => cacheWorkspace(result.workspace),
+  });
   const generate = useMutation({
     mutationFn: (input: {
       name: string;
       brief: string;
       target: string;
       slugs: string[];
+      confirmDestructive?: boolean;
+      draftProtocol?: string;
+      draftScript?: string;
     }) => generateSkill({ data: input }),
     onSuccess: (result) => cacheWorkspace(result.workspace),
   });
@@ -76,5 +100,5 @@ export function useHelixActions() {
     onSuccess: (result) => cacheWorkspace(result.workspace),
   });
 
-  return { init, compact, log, memory, skill, policy, report, combo, generate, probe };
+  return { init, compact, log, memory, undo, skill, policy, report, combo, generate, probe };
 }

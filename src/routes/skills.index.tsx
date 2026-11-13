@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMemo, useState, type ReactNode } from "react";
 import { HelixMark } from "@/components/helix-mark";
+import { PageLoading } from "@/components/page-loading";
 import { AppShell } from "@/components/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,8 +9,9 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { CATEGORY_LABEL, SKILL_CATALOG, type CatalogSkill } from "@/lib/helix/catalog";
+import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
-import { formatTokens } from "@/lib/helix/token";
+import { formatTokenLabel } from "@/lib/helix/token";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/skills/")({ component: SkillsRoute });
@@ -20,7 +22,7 @@ function SkillsRoute() {
   const ws = useWorkspace(authed && !isPending);
 
   if (isPending) {
-    return <div className="min-h-dvh bg-bg" />;
+    return <PageLoading label="Loading skills…" />;
   }
 
   if (authed) {
@@ -161,7 +163,7 @@ function SkillsPage({
                   </div>
                   <div className="mt-4 flex items-center justify-between gap-2">
                     <p className="font-mono text-xs text-subtle">
-                      {formatTokens(s.tokenCost)} · {s.origin}
+                      {formatTokenLabel(s.tokenCost)} · {s.origin}
                     </p>
                     {user && !catalogFallback && (
                       <label className="flex min-h-11 items-center gap-2 text-xs text-muted">
@@ -209,7 +211,17 @@ function SkillsPage({
             className="mt-4 w-full"
             disabled={actions.combo.isPending}
             onClick={async () => {
-              await actions.combo.mutateAsync({ name: comboName, slugs: picked });
+              let res: Awaited<ReturnType<typeof actions.combo.mutateAsync>>;
+              try {
+                res = await actions.combo.mutateAsync({ name: comboName, slugs: picked });
+              } catch (error) {
+                toast.error(mutationErrorMessage(error));
+                return;
+              }
+              if (res.error) {
+                toast.error(res.error);
+                return;
+              }
               toast.success("Playbook saved.");
               setOpen(false);
               setPicked([]);

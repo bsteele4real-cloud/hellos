@@ -1,13 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { CompactConfirm } from "@/components/compact-confirm";
 import { AuthGate } from "@/components/auth-gate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
-import { compactBudget, formatTokens } from "@/lib/helix/token";
+import { localCompact } from "@/lib/helix/compact";
+import { textForCompact } from "@/lib/helix/governance";
+import { compactBudget, formatTokenLabel, formatTokens } from "@/lib/helix/token";
+import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
 import { toast } from "sonner";
 
@@ -30,6 +34,7 @@ function MemoryPage() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [tags, setTags] = useState("");
+  const [confirmCompact, setConfirmCompact] = useState(false);
 
   if (isPending || !data) return <div className="h-64 animate-pulse rounded-2xl bg-surface" />;
 
@@ -44,31 +49,54 @@ function MemoryPage() {
           <p className="text-xs tracking-[0.18em] text-muted uppercase">Second brain</p>
           <h1 className="mt-1 font-serif text-4xl">Shared memory</h1>
           <p className="mt-2 max-w-xl text-sm text-muted">
-            Agents recall compacted notes, not transcripts. /compact runs redaction first when governance is on.
+            Shortened notes are what get reused. Shorten removes secrets first when that rule is on.
           </p>
         </div>
         <Button
-          onClick={async () => {
-            const res = await actions.compact.mutateAsync();
-            toast.success(`Saved ${res.saved} tokens across ${res.notes} notes.`);
-          }}
+          onClick={() => setConfirmCompact(true)}
           disabled={actions.compact.isPending || raw.length === 0}
         >
-          {actions.compact.isPending ? "Compacting…" : `Compact (${raw.length})`}
+          {actions.compact.isPending ? "Shortening…" : `Shorten notes (${raw.length})`}
         </Button>
       </header>
+
+      <CompactConfirm
+        open={confirmCompact}
+        notes={raw.length}
+        preview={raw[0] ? localCompact(textForCompact(raw[0].body, data.policies).text) : ""}
+        pending={actions.compact.isPending}
+        onCancel={() => setConfirmCompact(false)}
+        onConfirm={() => {
+          void (async () => {
+            try {
+              const res = await actions.compact.mutateAsync();
+              toast.success(
+                `Saved ${res.saved} tokens across ${res.notes} notes. Undo is on each note.`,
+              );
+              setConfirmCompact(false);
+            } catch (error) {
+              toast.error(mutationErrorMessage(error));
+            }
+          })();
+        }}
+      />
 
       <section className="grid gap-3 sm:grid-cols-3">
         <Stat label="Notes" value={String(data.memories.length)} />
         <Stat label="Tokens now" value={formatTokens(total)} />
-        <Stat label="If compacted" value={formatTokens(potential) + " saved"} />
+        <Stat label="If shortened" value={`${formatTokenLabel(potential)} saved`} />
       </section>
 
       <form
         className="rounded-2xl bg-surface p-5 shadow-[0_0_0_1px_rgb(255_255_255/0.08)]"
         onSubmit={async (e) => {
           e.preventDefault();
-          await actions.memory.mutateAsync({ title, body, tags });
+          try {
+            await actions.memory.mutateAsync({ title, body, tags });
+          } catch (error) {
+            toast.error(mutationErrorMessage(error));
+            return;
+          }
           setTitle("");
           setBody("");
           setTags("");
@@ -77,8 +105,17 @@ function MemoryPage() {
       >
         <h2 className="font-serif text-2xl">Write</h2>
         <div className="mt-4 grid gap-3">
-          <Input placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
-          <Input placeholder="tags, comma-separated" value={tags} onChange={(e) => setTags(e.target.value)} />
+          <Input
+            placeholder="Title"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            required
+          />
+          <Input
+            placeholder="tags, comma-separated"
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+          />
           <Textarea
             placeholder="Decision, path, or handoff. Not a transcript."
             value={body}
@@ -100,8 +137,24 @@ function MemoryPage() {
             <div className="flex items-start justify-between gap-3">
               <h3 className="font-medium">{m.title}</h3>
               <div className="flex gap-2">
-                {m.compacted && <Badge variant="signal">Compact</Badge>}
-                <Badge>{formatTokens(m.token_estimate)}</Badge>
+                {m.compacted && <Badge variant="signal">Short</Badge>}
+                {m.previous_body && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={actions.undo.isPending}
+                    onClick={() => {
+                      void actions.undo.mutateAsync({ id: m.id }).then(
+                        () => toast.success("Restored the previous note."),
+                        (error: unknown) => toast.error(mutationErrorMessage(error)),
+                      );
+                    }}
+                  >
+                    Undo
+                  </Button>
+                )}
+                <Badge>{formatTokenLabel(m.token_estimate)}</Badge>
               </div>
             </div>
             {m.tags && <p className="mt-1 text-xs text-subtle">{m.tags}</p>}
@@ -109,7 +162,7 @@ function MemoryPage() {
           </article>
         ))}
         {data.memories.length === 0 && (
-          <p className="text-sm text-muted">Empty brain. Write a note or run /init.</p>
+          <p className="text-sm text-muted">No notes yet. Write one here.</p>
         )}
       </section>
     </div>
