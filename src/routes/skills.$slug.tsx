@@ -1,6 +1,8 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { AppShell } from "@/components/app-shell";
+import { CopyButton } from "@/components/copy-button";
 import { HelixMark } from "@/components/helix-mark";
+import { ProtocolView } from "@/components/protocol-view";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -62,13 +64,14 @@ function SkillDetail() {
         </div>
       </header>
       <section className="rounded-2xl bg-surface p-5 shadow-[0_0_0_1px_rgb(255_255_255/0.08)]">
-        <pre className="font-sans text-sm leading-relaxed whitespace-pre-wrap text-fg">
-          {protocol}
-        </pre>
+        <ProtocolView source={protocol} />
       </section>
       {script && (
         <section className="rounded-2xl bg-elevated p-5 shadow-[0_0_0_1px_rgb(255_255_255/0.08)]">
-          <h2 className="font-serif text-xl">Linux</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-serif text-xl">Linux</h2>
+            <CopyButton text={script} label="Copy script" />
+          </div>
           <pre className="mt-3 overflow-x-auto font-mono text-xs leading-relaxed text-muted">
             {script}
           </pre>

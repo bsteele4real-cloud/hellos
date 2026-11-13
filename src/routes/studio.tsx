@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { CopyButton } from "@/components/copy-button";
+import { ProtocolView } from "@/components/protocol-view";
 import { AuthGate } from "@/components/auth-gate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -265,14 +267,17 @@ function StudioPage() {
         <section className="grid gap-4 lg:grid-cols-2">
           <article className="rounded-2xl bg-surface p-5 shadow-[0_0_0_1px_rgb(255_255_255/0.08)]">
             <h2 className="font-serif text-2xl">Protocol</h2>
-            <pre className="mt-3 whitespace-pre-wrap font-sans text-sm text-muted">
-              {result.protocol}
-            </pre>
+            <div className="mt-3">
+              <ProtocolView source={result.protocol} />
+            </div>
           </article>
           <article className="rounded-2xl bg-elevated p-5 shadow-[0_0_0_1px_rgb(255_255_255/0.08)]">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <h2 className="font-serif text-2xl">Linux</h2>
-              <Badge>{formatTokens(result.estimate)}</Badge>
+              <div className="flex items-center gap-2">
+                <Badge>{formatTokens(result.estimate)}</Badge>
+                <CopyButton text={result.script} label="Copy script" />
+              </div>
             </div>
             <pre className="mt-3 overflow-x-auto font-mono text-xs leading-relaxed text-muted">
               {result.script}
