@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import { CONNECTOR_CATALOG, skillBySlug } from "@/lib/helix/catalog";
+import { localCompact } from "@/lib/helix/compact";
 import {
   MAX_SKILLS_HARD,
   buildCompactPrompt,
@@ -47,6 +48,7 @@ export type MemoryRow = {
   tags: string;
   compacted: boolean;
   token_estimate: number;
+  previous_body: string | null;
   created_at: string;
 };
 
@@ -160,7 +162,7 @@ async function loadWorkspace(userId: string): Promise<Workspace> {
   const [skills, memories, events, mistakes, policies, reports, connectors, combos] =
     await Promise.all([
       sql<SkillRow>`select id, slug, name, category, summary, protocol, linux_script, installed, token_cost, origin, created_at from helix_skills where user_id = ${userId} order by name`,
-      sql<MemoryRow>`select id, title, body, tags, compacted, token_estimate, created_at from helix_memory where user_id = ${userId} order by created_at desc`,
+      sql<MemoryRow>`select id, title, body, tags, compacted, token_estimate, previous_body, created_at from helix_memory where user_id = ${userId} order by created_at desc`,
       sql<EventRow>`select id, kind, label, detail, severity, created_at from helix_events where user_id = ${userId} order by created_at desc limit 80`,
       sql<MistakeRow>`select id, pattern, count, flagged, tutor_note, last_seen from helix_mistakes where user_id = ${userId} order by count desc`,
       sql<PolicyRow>`select id, slug, name, domain, rule, enabled from helix_policies where user_id = ${userId} order by name`,
@@ -243,18 +245,6 @@ export const addMemory = createServerFn({ method: "POST" })
     return loadWorkspace(context.userId);
   });
 
-function localCompact(body: string): string {
-  const lines = body
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
-  const keep = lines.filter(
-    (l, i) => i === 0 || /^(#|-|\d+\.)/.test(l) || l.length < 140,
-  );
-  const text = (keep.length ? keep : lines.slice(0, 4)).join("\n");
-  return text.slice(0, 900);
-}
-
 async function askGrok(prompt: string, maxTokens: number): Promise<string | null> {
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) return null;
@@ -289,7 +279,7 @@ export const compactMemory = createServerFn({ method: "POST" })
   .handler(async ({ context }) => {
     const sql = await getSql();
     const rows = await sql<MemoryRow>`
-      select id, title, body, tags, compacted, token_estimate, created_at
+      select id, title, body, tags, compacted, token_estimate, previous_body, created_at
       from helix_memory where user_id = ${context.userId} and compacted = false`;
     if (rows.length === 0) {
       await sql`insert into helix_events (user_id, kind, label, detail)
@@ -315,7 +305,7 @@ export const compactMemory = createServerFn({ method: "POST" })
       }
       const after = estimateTokens(compacted);
       saved += Math.max(0, before - after);
-      await sql`update helix_memory set body = ${compacted}, compacted = true, token_estimate = ${after}
+      await sql`update helix_memory set body = ${compacted}, previous_body = ${row.body}, compacted = true, token_estimate = ${after}
         where id = ${row.id} and user_id = ${context.userId}`;
     }
 
@@ -332,6 +322,26 @@ export const compactMemory = createServerFn({ method: "POST" })
         actions = helix_reports.actions + 1`;
 
     return { workspace: await loadWorkspace(context.userId), saved, notes: rows.length, redacted };
+  });
+
+export const undoCompact = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { id: number }) => ({ id: Number(input.id) }))
+  .handler(async ({ context, data }) => {
+    if (!Number.isInteger(data.id)) throw new Error("That note could not be restored.");
+    const sql = await getSql();
+    const rows = await sql<{ previous_body: string | null }>`
+      select previous_body from helix_memory
+      where id = ${data.id} and user_id = ${context.userId}`;
+    const previous = rows[0]?.previous_body;
+    if (!previous) throw new Error("Nothing to undo for that note.");
+    const tokens = estimateTokens(previous);
+    await sql`update helix_memory
+      set body = ${previous}, previous_body = null, compacted = false, token_estimate = ${tokens}
+      where id = ${data.id} and user_id = ${context.userId}`;
+    await sql`insert into helix_events (user_id, kind, label, detail)
+      values (${context.userId}, 'compact', 'Compact undone', 'Restored the previous note text.')`;
+    return loadWorkspace(context.userId);
   });
 
 function normalizePattern(raw: string): string {

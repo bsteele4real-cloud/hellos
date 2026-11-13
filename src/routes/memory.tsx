@@ -1,12 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { AppShell } from "@/components/app-shell";
+import { CompactConfirm } from "@/components/compact-confirm";
 import { AuthGate } from "@/components/auth-gate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { localCompact } from "@/lib/helix/compact";
+import { textForCompact } from "@/lib/helix/governance";
 import { compactBudget, formatTokens } from "@/lib/helix/token";
 import { mutationErrorMessage } from "@/lib/helix/mutation-error";
 import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
@@ -31,6 +34,7 @@ function MemoryPage() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [tags, setTags] = useState("");
+  const [confirmCompact, setConfirmCompact] = useState(false);
 
   if (isPending || !data) return <div className="h-64 animate-pulse rounded-2xl bg-surface" />;
 
@@ -49,19 +53,33 @@ function MemoryPage() {
           </p>
         </div>
         <Button
-          onClick={async () => {
+          onClick={() => setConfirmCompact(true)}
+          disabled={actions.compact.isPending || raw.length === 0}
+        >
+          {actions.compact.isPending ? "Shortening…" : `Shorten notes (${raw.length})`}
+        </Button>
+      </header>
+
+      <CompactConfirm
+        open={confirmCompact}
+        notes={raw.length}
+        preview={
+          raw[0] ? localCompact(textForCompact(raw[0].body, data.policies).text) : ""
+        }
+        pending={actions.compact.isPending}
+        onCancel={() => setConfirmCompact(false)}
+        onConfirm={() => {
+          void (async () => {
             try {
               const res = await actions.compact.mutateAsync();
-              toast.success(`Saved ${res.saved} tokens across ${res.notes} notes.`);
+              toast.success(`Saved ${res.saved} tokens across ${res.notes} notes. Undo is on each note.`);
+              setConfirmCompact(false);
             } catch (error) {
               toast.error(mutationErrorMessage(error));
             }
-          }}
-          disabled={actions.compact.isPending || raw.length === 0}
-        >
-          {actions.compact.isPending ? "Compacting…" : `Compact (${raw.length})`}
-        </Button>
-      </header>
+          })();
+        }}
+      />
 
       <section className="grid gap-3 sm:grid-cols-3">
         <Stat label="Notes" value={String(data.memories.length)} />
@@ -110,7 +128,23 @@ function MemoryPage() {
             <div className="flex items-start justify-between gap-3">
               <h3 className="font-medium">{m.title}</h3>
               <div className="flex gap-2">
-                {m.compacted && <Badge variant="signal">Compact</Badge>}
+                {m.compacted && <Badge variant="signal">Short</Badge>}
+                {m.previous_body && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={actions.undo.isPending}
+                    onClick={() => {
+                      void actions.undo.mutateAsync({ id: m.id }).then(
+                        () => toast.success("Restored the previous note."),
+                        (error: unknown) => toast.error(mutationErrorMessage(error)),
+                      );
+                    }}
+                  >
+                    Undo
+                  </Button>
+                )}
                 <Badge>{formatTokens(m.token_estimate)}</Badge>
               </div>
             </div>

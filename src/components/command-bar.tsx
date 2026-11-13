@@ -1,15 +1,23 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { CompactConfirm } from "@/components/compact-confirm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { localCompact } from "@/lib/helix/compact";
+import { textForCompact } from "@/lib/helix/governance";
 import { mutationErrorMessage } from "@/lib/helix/mutation-error";
-import { useHelixActions } from "@/lib/helix/use-workspace";
+import { useHelixActions, useWorkspace } from "@/lib/helix/use-workspace";
 import { toast } from "sonner";
 
 export function CommandBar() {
   const [value, setValue] = useState("");
+  const [confirmCompact, setConfirmCompact] = useState(false);
   const nav = useNavigate();
   const actions = useHelixActions();
+  const { user } = useCurrentUserState();
+  const ws = useWorkspace(Boolean(user));
+  const raw = (ws.data?.memories ?? []).filter((note) => !note.compacted);
 
   async function run(raw: string) {
     const text = raw.trim();
@@ -20,8 +28,8 @@ export function CommandBar() {
         await actions.init.mutateAsync();
         toast.success("Workspace initialized. Recording is live.");
       } else if (lower === "/compact" || lower === "compact") {
-        const res = await actions.compact.mutateAsync();
-        toast.success(`Compacted ${res.notes} notes, saved ${res.saved} tokens.`);
+        if (raw.length === 0) toast.message("Nothing to shorten.");
+        else setConfirmCompact(true);
       } else if (lower === "/report" || lower === "report") {
         await actions.report.mutateAsync();
         toast.success("Daily briefing written.");
@@ -54,6 +62,25 @@ export function CommandBar() {
   }
 
   return (
+    <>
+    <CompactConfirm
+      open={confirmCompact}
+      notes={raw.length}
+      preview={raw[0] ? localCompact(textForCompact(raw[0].body, ws.data?.policies ?? []).text) : ""}
+      pending={actions.compact.isPending}
+      onCancel={() => setConfirmCompact(false)}
+      onConfirm={() => {
+        void (async () => {
+          try {
+            const res = await actions.compact.mutateAsync();
+            toast.success(`Shortened ${res.notes} notes and saved ${res.saved} tokens. Undo is on each note.`);
+            setConfirmCompact(false);
+          } catch (error) {
+            toast.error(mutationErrorMessage(error));
+          }
+        })();
+      }}
+    />
     <form
       className="flex flex-col gap-2 sm:flex-row"
       onSubmit={(e) => {
@@ -72,5 +99,6 @@ export function CommandBar() {
         Run
       </Button>
     </form>
+    </>
   );
 }

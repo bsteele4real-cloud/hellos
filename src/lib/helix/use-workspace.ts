@@ -10,6 +10,7 @@ import {
   runInit,
   togglePolicy,
   toggleSkill,
+  undoCompact,
   writeDailyReport,
   type Workspace,
 } from "@/lib/fns/workspace";
@@ -53,6 +54,7 @@ export function useHelixActions() {
   const memory = useWsMutation((input: { title: string; body: string; tags: string }) =>
     addMemory({ data: input }),
   );
+  const undo = useWsMutation((input: { id: number }) => undoCompact({ data: input }));
   const skill = useWsMutation((input: { slug: string; installed: boolean }) =>
     toggleSkill({ data: input }),
   );
@@ -98,5 +100,5 @@ export function useHelixActions() {
     onSuccess: (result) => cacheWorkspace(result.workspace),
   });
 
-  return { init, compact, log, memory, skill, policy, report, combo, generate, probe };
+  return { init, compact, log, memory, undo, skill, policy, report, combo, generate, probe };
 }
